@@ -1,0 +1,105 @@
+// ===== Unified API Type System =====
+
+// --- Content Blocks ---
+
+export interface TextBlock {
+  type: 'text'
+  text: string
+}
+
+export interface ImageBlock {
+  type: 'image'
+  source: { type: 'base64' | 'url'; mediaType?: string; data?: string; url?: string }
+}
+
+export interface ToolUseBlock {
+  type: 'tool_use'
+  id: string
+  name: string
+  input: Record<string, unknown>
+}
+
+export interface ToolResultBlock {
+  type: 'tool_result'
+  toolUseId: string
+  content: string
+  isError?: boolean
+}
+
+export type ContentBlock = TextBlock | ImageBlock | ToolUseBlock | ToolResultBlock
+
+// --- Messages ---
+
+export interface UnifiedMessage {
+  id: string
+  role: 'system' | 'user' | 'assistant' | 'tool'
+  content: string | ContentBlock[]
+  createdAt: number
+  usage?: { inputTokens: number; outputTokens: number }
+}
+
+// --- Streaming Events ---
+
+export type StreamEventType =
+  | 'message_start'
+  | 'text_delta'
+  | 'tool_call_start'
+  | 'tool_call_delta'
+  | 'tool_call_end'
+  | 'message_end'
+  | 'error'
+
+export interface StreamEvent {
+  type: StreamEventType
+  text?: string
+  toolCallId?: string
+  toolName?: string
+  argumentsDelta?: string
+  toolCallInput?: Record<string, unknown>
+  stopReason?: string
+  usage?: { inputTokens: number; outputTokens: number }
+  error?: { type: string; message: string }
+}
+
+// --- Tool Definitions ---
+
+export interface ToolDefinition {
+  name: string
+  description: string
+  inputSchema: {
+    type: 'object'
+    properties: Record<string, unknown>
+    required?: string[]
+  }
+}
+
+// --- Provider Config ---
+
+export type ProviderType = 'anthropic' | 'openai-chat' | 'openai-responses'
+
+export interface ProviderConfig {
+  type: ProviderType
+  apiKey: string
+  baseUrl?: string
+  model: string
+  maxTokens?: number
+  temperature?: number
+  systemPrompt?: string
+}
+
+// --- Provider Interface ---
+
+export interface APIProvider {
+  readonly name: string
+  readonly type: ProviderType
+
+  sendMessage(
+    messages: UnifiedMessage[],
+    tools: ToolDefinition[],
+    config: ProviderConfig,
+    signal?: AbortSignal
+  ): AsyncIterable<StreamEvent>
+
+  formatMessages(messages: UnifiedMessage[]): unknown
+  formatTools(tools: ToolDefinition[]): unknown
+}
