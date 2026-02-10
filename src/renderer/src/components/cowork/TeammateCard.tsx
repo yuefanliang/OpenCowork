@@ -145,6 +145,17 @@ export function TeammateCard({ member, task, onSendMessage, onStop }: TeammateCa
         </Collapsible>
       )}
 
+      {/* Streaming text (live thinking) */}
+      {isWorking && member.streamingText && (
+        <div className="border-t border-cyan-500/10 px-3 py-1.5 max-h-24 overflow-y-auto">
+          <p className="text-[10px] text-muted-foreground/60 leading-relaxed whitespace-pre-wrap break-words">
+            {member.streamingText.length > 500
+              ? `…${member.streamingText.slice(-500)}`
+              : member.streamingText}
+          </p>
+        </div>
+      )}
+
       {/* Thinking indicator */}
       {isWorking && member.toolCalls.length === 0 && !member.streamingText && (
         <div className="border-t border-cyan-500/10 px-3 py-1.5 flex items-center gap-2">

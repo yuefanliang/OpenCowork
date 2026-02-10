@@ -117,6 +117,7 @@ export async function runTeammate(options: RunTeammateOptions): Promise<void> {
   // 5. Run the loop
   const collectedToolCalls: ToolCallState[] = []
   let iteration = 0
+  let streamingText = ''
 
   try {
     const loop = runAgentLoop(
@@ -141,23 +142,21 @@ export async function runTeammate(options: RunTeammateOptions): Promise<void> {
       switch (event.type) {
         case 'iteration_start':
           iteration = event.iteration
+          streamingText = ''
           teamEvents.emit({
             type: 'team_member_update',
             memberId,
-            patch: { iteration, status: 'working' },
+            patch: { iteration, status: 'working', streamingText: '' },
           })
           break
 
         case 'text_delta':
-          // Accumulate streaming text in member state
-          {
-            const current = useTeamStore.getState().activeTeam?.members.find((m) => m.id === memberId)
-            teamEvents.emit({
-              type: 'team_member_update',
-              memberId,
-              patch: { streamingText: (current?.streamingText ?? '') + event.text },
-            })
-          }
+          streamingText += event.text
+          teamEvents.emit({
+            type: 'team_member_update',
+            memberId,
+            patch: { streamingText },
+          })
           break
 
         case 'tool_call_start':

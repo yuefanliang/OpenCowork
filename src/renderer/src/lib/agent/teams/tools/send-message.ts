@@ -54,7 +54,7 @@ export const sendMessageTool: ToolHandler = {
 
     const msg: TeamMessage = {
       id: nanoid(8),
-      from: 'lead',
+      from: input.sender ? String(input.sender) : 'lead',
       to: recipient,
       type: msgType,
       content: String(input.content),
