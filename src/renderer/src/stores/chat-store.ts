@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { nanoid } from 'nanoid'
-import type { UnifiedMessage, ContentBlock, TextBlock, ToolUseBlock } from '../lib/api/types'
+import type { UnifiedMessage, ContentBlock, TextBlock, ThinkingBlock, ToolUseBlock } from '../lib/api/types'
 
 export type SessionMode = 'chat' | 'cowork' | 'code'
 
@@ -39,6 +39,8 @@ interface ChatStore {
   addMessage: (sessionId: string, msg: UnifiedMessage) => void
   updateMessage: (sessionId: string, msgId: string, patch: Partial<UnifiedMessage>) => void
   appendTextDelta: (sessionId: string, msgId: string, text: string) => void
+  appendThinkingDelta: (sessionId: string, msgId: string, thinking: string) => void
+  completeThinking: (sessionId: string, msgId: string) => void
   appendToolUse: (sessionId: string, msgId: string, toolUse: ToolUseBlock) => void
 
   // Streaming state
@@ -220,6 +222,45 @@ export const useChatStore = create<ChatStore>()(
             ;(lastBlock as TextBlock).text += text
           } else {
             blocks.push({ type: 'text', text })
+          }
+        }
+      })
+    },
+
+    appendThinkingDelta: (sessionId, msgId, thinking) => {
+      set((state) => {
+        const session = state.sessions.find((s) => s.id === sessionId)
+        if (!session) return
+        const msg = session.messages.find((m) => m.id === msgId)
+        if (!msg) return
+
+        const now = Date.now()
+        if (typeof msg.content === 'string') {
+          // Convert empty string to block array with a thinking block
+          msg.content = [{ type: 'thinking', thinking, startedAt: now }]
+        } else {
+          const blocks = msg.content as ContentBlock[]
+          const lastBlock = blocks[blocks.length - 1]
+          if (lastBlock && lastBlock.type === 'thinking') {
+            ;(lastBlock as ThinkingBlock).thinking += thinking
+          } else {
+            blocks.push({ type: 'thinking', thinking, startedAt: now })
+          }
+        }
+      })
+    },
+
+    completeThinking: (sessionId, msgId) => {
+      set((state) => {
+        const session = state.sessions.find((s) => s.id === sessionId)
+        if (!session) return
+        const msg = session.messages.find((m) => m.id === msgId)
+        if (!msg || typeof msg.content === 'string') return
+
+        const blocks = msg.content as ContentBlock[]
+        for (const block of blocks) {
+          if (block.type === 'thinking' && !block.completedAt) {
+            block.completedAt = Date.now()
           }
         }
       })

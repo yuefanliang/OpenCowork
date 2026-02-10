@@ -264,19 +264,31 @@ export function TopBar(): React.JSX.Element {
       )}
 
       {/* Team indicator */}
-      {activeTeam && (
-        <button
-          onClick={() => {
-            const ui = useUIStore.getState()
-            ui.setRightPanelOpen(true)
-            ui.setRightPanelTab('team')
-          }}
-          className="titlebar-no-drag flex items-center gap-1 rounded bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-medium text-cyan-500 hover:bg-cyan-500/20 transition-colors"
-        >
-          <Users className="size-3" />
-          {activeTeam.name} · {activeTeam.members.length}
-        </button>
-      )}
+      {activeTeam && (() => {
+        const completed = activeTeam.tasks.filter((t) => t.status === 'completed').length
+        const total = activeTeam.tasks.length
+        const working = activeTeam.members.filter((m) => m.status === 'working').length
+        return (
+          <button
+            onClick={() => {
+              const ui = useUIStore.getState()
+              ui.setRightPanelOpen(true)
+              ui.setRightPanelTab('team')
+            }}
+            className="titlebar-no-drag flex items-center gap-1 rounded bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-medium text-cyan-500 hover:bg-cyan-500/20 transition-colors"
+          >
+            <Users className="size-3" />
+            {activeTeam.name}
+            {total > 0 && <span className="text-cyan-500/60">· {completed}/{total}✓</span>}
+            {working > 0 && (
+              <span className="flex items-center gap-0.5">
+                <span className="size-1.5 rounded-full bg-cyan-500 animate-pulse" />
+                {working}
+              </span>
+            )}
+          </button>
+        )
+      })()}
 
       {/* Error count indicator */}
       {errorCount > 0 && (

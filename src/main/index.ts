@@ -6,6 +6,7 @@ import { registerFsHandlers } from './ipc/fs-handlers'
 import { registerShellHandlers } from './ipc/shell-handlers'
 import { registerApiProxyHandlers } from './ipc/api-proxy'
 import { registerSettingsHandlers } from './ipc/settings-handlers'
+import { registerSkillsHandlers } from './ipc/skills-handlers'
 
 function createWindow(): void {
   // Create the browser window.
@@ -85,6 +86,7 @@ app.whenReady().then(() => {
   registerShellHandlers()
   registerApiProxyHandlers()
   registerSettingsHandlers()
+  registerSkillsHandlers()
 
   createWindow()
 

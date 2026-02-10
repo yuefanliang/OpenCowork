@@ -1,7 +1,5 @@
 import * as React from 'react'
-import { ChevronDown, ChevronRight, CheckCircle2, Loader2, XCircle, Clock, Copy, Check, ArrowRight, Terminal, FileCode, Search, FolderTree, Folder, File, ListChecks, Circle, CircleDot } from 'lucide-react'
-import { Badge } from '@renderer/components/ui/badge'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@renderer/components/ui/collapsible'
+import { ChevronDown, CheckCircle2, XCircle, Copy, Check, ArrowRight, Terminal, FileCode, Search, FolderTree, Folder, File, ListChecks, Circle, CircleDot } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import type { ToolCallStatus } from '@renderer/lib/agent/types'
 import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -18,20 +16,6 @@ interface ToolCallCardProps {
   completedAt?: number
 }
 
-function StatusIcon({ status }: { status: ToolCallCardProps['status'] }): React.JSX.Element {
-  switch (status) {
-    case 'completed':
-      return <CheckCircle2 className="size-3.5 text-green-500" />
-    case 'running':
-      return <Loader2 className="size-3.5 animate-spin text-blue-500" />
-    case 'error':
-      return <XCircle className="size-3.5 text-destructive" />
-    case 'pending_approval':
-      return <Clock className="size-3.5 text-amber-500" />
-    default:
-      return <Clock className="size-3.5 text-muted-foreground" />
-  }
-}
 
 function inputSummary(name: string, input: Record<string, unknown>): string {
   // Tool-specific smart summaries
@@ -415,21 +399,6 @@ function TodoInputBlock({ input }: { input: Record<string, unknown> }): React.JS
   )
 }
 
-function ToolIcon({ name }: { name: string }): React.JSX.Element | null {
-  switch (name) {
-    case 'Read': return <FileCode className="size-3.5 text-blue-400" />
-    case 'Write': return <FileCode className="size-3.5 text-green-400" />
-    case 'Edit': case 'MultiEdit': return <ArrowRight className="size-3.5 text-amber-400" />
-    case 'Delete': return <File className="size-3.5 text-destructive" />
-    case 'Bash': return <Terminal className="size-3.5 text-green-400" />
-    case 'Grep': return <Search className="size-3.5 text-amber-400" />
-    case 'Glob': return <FolderTree className="size-3.5 text-amber-400" />
-    case 'LS': return <Folder className="size-3.5 text-amber-400" />
-    case 'TodoWrite': case 'TodoRead': return <ListChecks className="size-3.5 text-blue-400" />
-    case 'CodeSearch': case 'CodeReview': case 'Planner': return <Search className="size-3.5 text-violet-400" />
-    default: return null
-  }
-}
 
 function TodoOutputBlock({ output }: { output: string }): React.JSX.Element {
   const parsed = React.useMemo(() => {
@@ -635,6 +604,43 @@ function DiffBlock({ oldStr, newStr, filePath }: { oldStr: string; newStr: strin
 // Tools that auto-expand when they have output (mutation/action tools)
 const EXPAND_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'Delete', 'Bash', 'TodoWrite'])
 
+function ToolStatusDot({ status }: { status: ToolCallCardProps['status'] }): React.JSX.Element {
+  switch (status) {
+    case 'completed':
+      return (
+        <span className="relative flex size-3.5 shrink-0 items-center justify-center">
+          <span className="size-2.5 rounded-full bg-green-500" />
+        </span>
+      )
+    case 'running':
+      return (
+        <span className="relative flex size-3.5 shrink-0 items-center justify-center">
+          <span className="absolute size-2.5 rounded-full bg-blue-500/30 animate-ping" />
+          <span className="size-2.5 rounded-full bg-blue-500" />
+        </span>
+      )
+    case 'error':
+      return (
+        <span className="relative flex size-3.5 shrink-0 items-center justify-center">
+          <span className="size-2.5 rounded-full bg-destructive" />
+        </span>
+      )
+    case 'pending_approval':
+      return (
+        <span className="relative flex size-3.5 shrink-0 items-center justify-center">
+          <span className="absolute size-2.5 rounded-full bg-amber-500/30 animate-ping" />
+          <span className="size-2.5 rounded-full bg-amber-500" />
+        </span>
+      )
+    default:
+      return (
+        <span className="relative flex size-3.5 shrink-0 items-center justify-center">
+          <span className="size-2.5 rounded-full border border-muted-foreground/30" />
+        </span>
+      )
+  }
+}
+
 export function ToolCallCard({
   name,
   input,
@@ -652,46 +658,35 @@ export function ToolCallCard({
     if (shouldAutoExpand) setOpen(true)
   }, [shouldAutoExpand])
 
+  const summary = inputSummary(name, input)
+  const elapsed = startedAt && completedAt ? ((completedAt - startedAt) / 1000).toFixed(1) + 's' : null
+
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger asChild>
-        <button
+    <div className="my-5">
+      {/* Header — click to toggle */}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ToolStatusDot status={status} />
+        <span className="font-medium">{name}</span>
+        {summary && !open && (
+          <span className="truncate text-muted-foreground/50 max-w-[300px]">{summary}</span>
+        )}
+        {elapsed && (
+          <span className="text-muted-foreground/30 tabular-nums text-[10px]">{elapsed}</span>
+        )}
+        <ChevronDown
           className={cn(
-            'flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-all duration-200',
-            'hover:bg-muted/40 hover:shadow-sm',
-            status === 'error' && 'border-destructive/30 bg-destructive/5'
+            'size-3 text-muted-foreground/40 transition-transform duration-200',
+            !open && '-rotate-90'
           )}
-        >
-          <StatusIcon status={status} />
-          <ToolIcon name={name} />
-          <Badge variant="outline" className="font-mono text-xs">
-            {name}
-          </Badge>
-          {startedAt && completedAt && (
-            <span className="text-[9px] text-muted-foreground/40 tabular-nums shrink-0">
-              {((completedAt - startedAt) / 1000).toFixed(1)}s
-            </span>
-          )}
-          {!open && (
-            <span className="flex-1 truncate text-xs text-muted-foreground/60 font-mono">
-              {inputSummary(name, input)}
-            </span>
-          )}
-          {!open && output && (
-            <span className="text-[9px] text-muted-foreground/30 shrink-0">
-              {output.length > 1000 ? `${Math.round(output.length / 1000)}k` : output.length} chars
-            </span>
-          )}
-          {open && <span className="flex-1" />}
-          {open ? (
-            <ChevronDown className="size-3.5 text-muted-foreground shrink-0" />
-          ) : (
-            <ChevronRight className="size-3.5 text-muted-foreground shrink-0" />
-          )}
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="mt-1 space-y-2 rounded-lg border bg-muted/20 p-3">
+        />
+      </button>
+
+      {/* Expanded details */}
+      {open && (
+        <div className="mt-1.5 space-y-2 pl-5">
           {/* Diff view for Edit tools */}
           {(name === 'Edit' || name === 'MultiEdit') && !!input.old_string && !!input.new_string && (
             <DiffBlock
@@ -820,7 +815,7 @@ export function ToolCallCard({
             </div>
           )}
         </div>
-      </CollapsibleContent>
-    </Collapsible>
+      )}
+    </div>
   )
 }

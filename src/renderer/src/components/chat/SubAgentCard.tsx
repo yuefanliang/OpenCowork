@@ -12,10 +12,12 @@ import {
   Clock,
   Copy,
   Check,
+  Maximize2,
 } from 'lucide-react'
 import { Badge } from '@renderer/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@renderer/components/ui/collapsible'
 import { useAgentStore } from '@renderer/stores/agent-store'
+import { useUIStore } from '@renderer/stores/ui-store'
 import { cn } from '@renderer/lib/utils'
 import { parseSubAgentMeta } from '@renderer/lib/agent/sub-agents/create-tool'
 import { ToolCallCard } from './ToolCallCard'
@@ -116,10 +118,14 @@ export function SubAgentCard({ name, toolUseId, input, output, isLive = false }:
   // Query/task description from input
   const queryText = String(input.query ?? input.task ?? input.target ?? '')
 
+  const handleOpenDetail = (): void => {
+    useUIStore.getState().openDetailPanel({ type: 'subagent', toolUseId })
+  }
+
   return (
     <div
       className={cn(
-        'rounded-xl border-2 overflow-hidden transition-all duration-300',
+        'my-5 rounded-xl border-2 overflow-hidden transition-all duration-300',
         isRunning && 'border-violet-500/40 shadow-lg shadow-violet-500/5',
         isCompleted && !isError && 'border-violet-500/20',
         isError && 'border-destructive/30',
@@ -177,6 +183,13 @@ export function SubAgentCard({ name, toolUseId, input, output, isLive = false }:
             </>
           )}
         </div>
+        <button
+          onClick={(e) => { e.stopPropagation(); handleOpenDetail() }}
+          className="rounded-md p-1 text-muted-foreground/30 hover:text-violet-500 hover:bg-violet-500/10 transition-colors shrink-0"
+          title="View details"
+        >
+          <Maximize2 className="size-3.5" />
+        </button>
       </div>
 
       {/* Inner tool calls (live) */}

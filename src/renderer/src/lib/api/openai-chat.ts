@@ -73,6 +73,10 @@ class OpenAIChatProvider implements APIProvider {
 
       const delta = choice.delta
 
+      if (delta?.reasoning_content) {
+        yield { type: 'thinking_delta', thinking: delta.reasoning_content }
+      }
+
       if (delta?.content) {
         yield { type: 'text_delta', text: delta.content }
       }

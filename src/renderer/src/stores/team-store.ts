@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import type { TeamMember, TeamTask, TeamMessage, TeamEvent } from '../lib/agent/teams/types'
 
 export interface ActiveTeam {
@@ -13,6 +14,8 @@ export interface ActiveTeam {
 
 interface TeamStore {
   activeTeam: ActiveTeam | null
+  /** Historical teams — persisted after team_end */
+  teamHistory: ActiveTeam[]
 
   // Actions
   createTeam: (name: string, description: string) => void
@@ -32,8 +35,10 @@ interface TeamStore {
 }
 
 export const useTeamStore = create<TeamStore>()(
+  persist(
   immer((set) => ({
     activeTeam: null,
+    teamHistory: [],
 
     createTeam: (name, description) =>
       set({
@@ -132,10 +137,22 @@ export const useTeamStore = create<TeamStore>()(
             if (state.activeTeam) state.activeTeam.messages.push(event.message)
             break
           case 'team_end':
+            if (state.activeTeam) {
+              state.teamHistory.push({ ...state.activeTeam })
+            }
             state.activeTeam = null
             break
         }
       })
     },
-  }))
+  })),
+  {
+    name: 'opencowork-team',
+    storage: createJSONStorage(() => localStorage),
+    partialize: (state) => ({
+      activeTeam: state.activeTeam,
+      teamHistory: state.teamHistory,
+    }),
+  }
+  )
 )

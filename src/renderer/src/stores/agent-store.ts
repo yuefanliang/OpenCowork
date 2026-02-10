@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import type { ToolCallState } from '../lib/agent/types'
 import type { SubAgentEvent } from '../lib/agent/sub-agents/types'
 
@@ -30,6 +31,8 @@ interface AgentStore {
   activeSubAgents: Record<string, SubAgentState>
   /** Completed SubAgent results keyed by toolUseId — survives until clearToolCalls */
   completedSubAgents: Record<string, SubAgentState>
+  /** Historical SubAgent records — persisted across agent runs */
+  subAgentHistory: SubAgentState[]
 
   /** Tool names approved by user during this session — auto-approve on repeat */
   approvedToolNames: string[]
@@ -51,6 +54,7 @@ interface AgentStore {
 }
 
 export const useAgentStore = create<AgentStore>()(
+  persist(
   immer((set) => ({
     isRunning: false,
     currentLoopId: null,
@@ -58,6 +62,7 @@ export const useAgentStore = create<AgentStore>()(
     executedToolCalls: [],
     activeSubAgents: {},
     completedSubAgents: {},
+    subAgentHistory: [],
     approvedToolNames: [],
 
     setRunning: (running) => set({ isRunning: running }),
@@ -101,8 +106,20 @@ export const useAgentStore = create<AgentStore>()(
       })
     },
 
-    clearToolCalls: () =>
-      set({ pendingToolCalls: [], executedToolCalls: [], activeSubAgents: {}, completedSubAgents: {}, approvedToolNames: [] }),
+    clearToolCalls: () => {
+      set((state) => {
+        // Move completed SubAgents to history before clearing
+        const completed = Object.values(state.completedSubAgents)
+        if (completed.length > 0) {
+          state.subAgentHistory.push(...completed)
+        }
+        state.pendingToolCalls = []
+        state.executedToolCalls = []
+        state.activeSubAgents = {}
+        state.completedSubAgents = {}
+        state.approvedToolNames = []
+      })
+    },
 
     handleSubAgentEvent: (event) => {
       set((state) => {
@@ -177,5 +194,15 @@ export const useAgentStore = create<AgentStore>()(
         approvalResolvers.delete(toolCallId)
       }
     },
-  }))
+  })),
+  {
+    name: 'opencowork-agent',
+    storage: createJSONStorage(() => localStorage),
+    partialize: (state) => ({
+      completedSubAgents: state.completedSubAgents,
+      executedToolCalls: state.executedToolCalls,
+      subAgentHistory: state.subAgentHistory,
+    }),
+  }
+  )
 )

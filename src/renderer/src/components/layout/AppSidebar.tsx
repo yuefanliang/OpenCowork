@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { nanoid } from 'nanoid'
-import { Plus, MessageSquare, Trash2, Eraser, Search, Briefcase, Code2, Download, Copy, X, Pin, PinOff, Pencil, Upload, Users } from 'lucide-react'
+import { Plus, MessageSquare, Trash2, Eraser, Search, Briefcase, Code2, Download, Copy, X, Pin, PinOff, Pencil, Upload } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -27,10 +27,19 @@ import {
 } from '@renderer/components/ui/context-menu'
 import { Input } from '@renderer/components/ui/input'
 import { Button } from '@renderer/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@renderer/components/ui/alert-dialog'
 import { toast } from 'sonner'
 import { useChatStore, type SessionMode } from '@renderer/stores/chat-store'
 import { useUIStore } from '@renderer/stores/ui-store'
-import { useTeamStore } from '@renderer/stores/team-store'
 import { sessionToMarkdown } from '@renderer/lib/utils/export-chat'
 
 const modeIcons: Record<SessionMode, React.ReactNode> = {
@@ -50,12 +59,25 @@ export function AppSidebar(): React.JSX.Element {
   const updateSessionMode = useChatStore((s) => s.updateSessionMode)
   const togglePinSession = useChatStore((s) => s.togglePinSession)
   const mode = useUIStore((s) => s.mode)
-  const activeTeam = useTeamStore((s) => s.activeTeam)
   const [search, setSearch] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const editRef = useRef<HTMLInputElement>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string; msgCount: number } | null>(null)
+
+  const confirmDelete = useCallback(() => {
+    if (!deleteTarget) return
+    const session = sessions.find((s) => s.id === deleteTarget.id)
+    if (!session) { setDeleteTarget(null); return }
+    const snapshot = JSON.parse(JSON.stringify(session))
+    deleteSession(session.id)
+    setDeleteTarget(null)
+    toast.success('Session deleted', {
+      action: { label: 'Undo', onClick: () => useChatStore.getState().restoreSession(snapshot) },
+      duration: 5000,
+    })
+  }, [deleteTarget, sessions, deleteSession])
 
 
   const handleNewSession = (): void => {
@@ -117,6 +139,7 @@ export function AppSidebar(): React.JSX.Element {
   if (older.length) groups.push({ label: 'Older', items: older })
 
   return (
+    <>
     <Sidebar side="left" variant="sidebar" collapsible="icon">
       <SidebarHeader>
         <div className="flex items-center gap-2.5 px-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
@@ -132,44 +155,6 @@ export function AppSidebar(): React.JSX.Element {
       </SidebarHeader>
 
       <SidebarContent>
-        {/* Active Team Group */}
-        {activeTeam && (
-          <SidebarGroup>
-            <SidebarGroupLabel>
-              <span className="flex items-center gap-1.5 text-cyan-500">
-                <Users className="size-3" />
-                {activeTeam.name}
-              </span>
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {activeTeam.members.map((member) => (
-                  <SidebarMenuItem key={member.id}>
-                    <SidebarMenuButton
-                      tooltip={`${member.name} — ${member.status}`}
-                    >
-                      <span className={`size-2 rounded-full shrink-0 ${
-                        member.status === 'working' ? 'bg-green-500' :
-                        member.status === 'idle' ? 'bg-cyan-400' :
-                        member.status === 'waiting' ? 'bg-amber-400' : 'bg-muted-foreground/30'
-                      }`} />
-                      <span className="truncate text-cyan-600 dark:text-cyan-400">{member.name}</span>
-                      <span className="ml-auto shrink-0 rounded bg-muted px-1 py-px text-[8px] text-muted-foreground/40">
-                        {member.status}
-                      </span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-                {activeTeam.members.length === 0 && (
-                  <div className="px-2 py-2 text-center text-[10px] text-muted-foreground/40 group-data-[collapsible=icon]:hidden">
-                    No teammates yet
-                  </div>
-                )}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
         <SidebarGroup>
           <SidebarGroupLabel>
             Conversations
@@ -308,7 +293,10 @@ export function AppSidebar(): React.JSX.Element {
                               showOnHover
                               onClick={(e) => {
                                 e.stopPropagation()
-                                if (session.messages.length > 0 && !window.confirm(`Delete "${session.title}" (${session.messages.length} messages)?`)) return
+                                if (session.messages.length > 0) {
+                                  setDeleteTarget({ id: session.id, title: session.title, msgCount: session.messages.length })
+                                  return
+                                }
                                 const snapshot = JSON.parse(JSON.stringify(session))
                                 deleteSession(session.id)
                                 toast.success('Session deleted', {
@@ -388,7 +376,10 @@ export function AppSidebar(): React.JSX.Element {
                           </ContextMenuSub>
                           <ContextMenuSeparator />
                           <ContextMenuItem variant="destructive" onClick={() => {
-                            if (session.messages.length > 0 && !window.confirm(`Delete "${session.title}" (${session.messages.length} messages)?`)) return
+                            if (session.messages.length > 0) {
+                              setDeleteTarget({ id: session.id, title: session.title, msgCount: session.messages.length })
+                              return
+                            }
                             const snapshot = JSON.parse(JSON.stringify(session))
                             deleteSession(session.id)
                             toast.success('Session deleted', {
@@ -466,5 +457,23 @@ export function AppSidebar(): React.JSX.Element {
         </p>
       </SidebarFooter>
     </Sidebar>
+
+    {/* Delete confirmation dialog */}
+    <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+      <AlertDialogContent size="sm">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete Conversation</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to delete &quot;{deleteTarget?.title}&quot;?
+            This conversation has {deleteTarget?.msgCount} messages.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={confirmDelete}>Delete</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }

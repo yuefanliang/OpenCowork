@@ -5,6 +5,7 @@ import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { AppSidebar } from './AppSidebar'
 import { TopBar } from './TopBar'
 import { RightPanel } from './RightPanel'
+import { DetailPanel } from './DetailPanel'
 import { MessageList } from '@renderer/components/chat/MessageList'
 import { InputArea } from '@renderer/components/chat/InputArea'
 import { SettingsDialog } from '@renderer/components/settings/SettingsDialog'
@@ -25,6 +26,7 @@ export function Layout(): React.JSX.Element {
   const leftSidebarOpen = useUIStore((s) => s.leftSidebarOpen)
   const setLeftSidebarOpen = useUIStore((s) => s.setLeftSidebarOpen)
   const rightPanelOpen = useUIStore((s) => s.rightPanelOpen)
+  const detailPanelOpen = useUIStore((s) => s.detailPanelOpen)
   const sessions = useChatStore((s) => s.sessions)
   const activeSessionId = useChatStore((s) => s.activeSessionId)
   const streamingMessageId = useChatStore((s) => s.streamingMessageId)
@@ -312,6 +314,9 @@ export function Layout(): React.JSX.Element {
                   isStreaming={!!streamingMessageId}
                 />
               </div>
+
+              {/* Middle: Detail Panel */}
+              {detailPanelOpen && <DetailPanel />}
 
               {/* Right: Cowork/Code Panel */}
               {mode !== 'chat' && rightPanelOpen && <RightPanel />}

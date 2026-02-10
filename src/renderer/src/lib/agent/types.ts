@@ -1,4 +1,4 @@
-import type { ProviderConfig, ToolDefinition } from '../api/types'
+import type { ProviderConfig, ToolDefinition, UnifiedMessage } from '../api/types'
 
 // --- Tool Call Runtime State ---
 
@@ -16,6 +16,35 @@ export interface ToolCallState {
   completedAt?: number
 }
 
+// --- Message Queue for mid-loop injection ---
+
+/**
+ * A simple queue that allows external code to push messages into a running
+ * agent loop. The loop drains the queue at iteration boundaries (between
+ * turns) and appends the messages to the conversation — matching Claude
+ * Code's behavior of delivering teammate messages between turns.
+ */
+export class MessageQueue {
+  private pending: UnifiedMessage[] = []
+
+  /** Push a message to be injected at the next iteration boundary. */
+  push(msg: UnifiedMessage): void {
+    this.pending.push(msg)
+  }
+
+  /** Drain all pending messages (non-blocking). Returns empty array if none. */
+  drain(): UnifiedMessage[] {
+    if (this.pending.length === 0) return []
+    const msgs = this.pending
+    this.pending = []
+    return msgs
+  }
+
+  get size(): number {
+    return this.pending.length
+  }
+}
+
 // --- Agent Loop Config ---
 
 export interface AgentLoopConfig {
@@ -25,6 +54,8 @@ export interface AgentLoopConfig {
   systemPrompt: string
   workingFolder?: string
   signal: AbortSignal
+  /** Optional message queue for injecting messages mid-loop (used by teammates). */
+  messageQueue?: MessageQueue
 }
 
 // --- Agent Loop Events ---
@@ -33,6 +64,7 @@ export type AgentEvent =
   | { type: 'loop_start' }
   | { type: 'iteration_start'; iteration: number }
   | { type: 'text_delta'; text: string }
+  | { type: 'thinking_delta'; thinking: string }
   | { type: 'message_end'; usage?: { inputTokens: number; outputTokens: number } }
   | { type: 'tool_use_generated'; toolUseBlock: { id: string; name: string; input: Record<string, unknown> } }
   | { type: 'tool_call_start'; toolCall: ToolCallState }

@@ -96,7 +96,7 @@ export function TeamEventCard({ name, input, output }: TeamEventCardProps): Reac
   }
 
   return (
-    <div className={cn('rounded-lg border px-3 py-2 transition-all', config.color, isError && 'border-destructive/30 bg-destructive/5')}>
+    <div className={cn('my-5 rounded-lg border px-3 py-2 transition-all', config.color, isError && 'border-destructive/30 bg-destructive/5')}>
       <div className="flex items-center gap-2">
         <span className="text-cyan-500 shrink-0">{config.icon}</span>
         <span className="text-[11px] font-medium text-cyan-600 dark:text-cyan-400">

@@ -26,7 +26,14 @@ export interface ToolResultBlock {
   isError?: boolean
 }
 
-export type ContentBlock = TextBlock | ImageBlock | ToolUseBlock | ToolResultBlock
+export interface ThinkingBlock {
+  type: 'thinking'
+  thinking: string
+  startedAt?: number
+  completedAt?: number
+}
+
+export type ContentBlock = TextBlock | ImageBlock | ToolUseBlock | ToolResultBlock | ThinkingBlock
 
 // --- Messages ---
 
@@ -43,6 +50,7 @@ export interface UnifiedMessage {
 export type StreamEventType =
   | 'message_start'
   | 'text_delta'
+  | 'thinking_delta'
   | 'tool_call_start'
   | 'tool_call_delta'
   | 'tool_call_end'
@@ -52,6 +60,7 @@ export type StreamEventType =
 export interface StreamEvent {
   type: StreamEventType
   text?: string
+  thinking?: string
   toolCallId?: string
   toolName?: string
   argumentsDelta?: string

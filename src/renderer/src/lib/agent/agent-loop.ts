@@ -29,6 +29,15 @@ export async function* runAgentLoop(
       return
     }
 
+    // Drain message queue: inject messages received between turns
+    // (e.g. from lead or other teammates via teamEvents)
+    if (config.messageQueue) {
+      const injected = config.messageQueue.drain()
+      for (const msg of injected) {
+        conversationMessages.push(msg)
+      }
+    }
+
     iteration++
     yield { type: 'iteration_start', iteration }
 
@@ -55,6 +64,11 @@ export async function* runAgentLoop(
         }
 
         switch (event.type) {
+          case 'thinking_delta':
+            yield { type: 'thinking_delta', thinking: event.thinking! }
+            appendThinkingToBlocks(assistantContentBlocks, event.thinking!)
+            break
+
           case 'text_delta':
             yield { type: 'text_delta', text: event.text! }
             // Accumulate text into content blocks
@@ -196,6 +210,15 @@ export async function* runAgentLoop(
 }
 
 // --- Helpers ---
+
+function appendThinkingToBlocks(blocks: ContentBlock[], thinking: string): void {
+  const last = blocks[blocks.length - 1]
+  if (last && last.type === 'thinking') {
+    last.thinking += thinking
+  } else {
+    blocks.push({ type: 'thinking', thinking })
+  }
+}
 
 function appendTextToBlocks(blocks: ContentBlock[], text: string): void {
   const last = blocks[blocks.length - 1]

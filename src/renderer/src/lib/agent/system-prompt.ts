@@ -9,8 +9,9 @@ export function buildSystemPrompt(options: {
   mode: 'cowork' | 'code'
   workingFolder?: string
   userSystemPrompt?: string
+  skills?: { name: string; description: string }[]
 }): string {
-  const { mode, workingFolder, userSystemPrompt } = options
+  const { mode, workingFolder, userSystemPrompt, skills } = options
 
   const toolDefs = toolRegistry.getDefinitions()
   const toolList = toolDefs
@@ -133,21 +134,22 @@ export function buildSystemPrompt(options: {
   // ── Task Planning ──
   parts.push(
     `\n<task_management>`,
-    `You have access to the TodoWrite tool to help you manage and plan tasks. Use it VERY frequently to ensure that you are tracking your tasks and giving the user visibility into your progress.`,
-    `These tools are also EXTREMELY helpful for planning tasks, and for breaking down larger complex tasks into smaller steps.`,
-    `It is critical that you mark todos as completed as soon as you are done with a task. Do not batch up multiple tasks before marking them as completed.`,
-    `\n### When to use TodoWrite`,
-    `- The user's request involves **2 or more distinct steps**`,
-    `- The task requires **exploring, then acting**`,
+    `You have access to the TodoWrite tool to help you manage and plan tasks.`,
+    `**MANDATORY RULE: For EVERY complex task, you MUST create a Todo list BEFORE starting any work. This is NOT optional.** A task is considered "complex" if it meets ANY of the following criteria:`,
+    `- The request involves **2 or more distinct steps**`,
+    `- The task requires **exploring, then acting** (e.g. understand structure → identify issues → fix them)`,
     `- The task involves **multiple files or components**`,
     `- The user asks for a **review, analysis, audit, or summary** of a codebase`,
     `- The task will take **more than one tool call** to complete`,
+    `- The task involves **debugging, refactoring, or feature implementation**`,
+    `\nIf you skip creating a Todo for a complex task, you are violating a core protocol. Always err on the side of creating a Todo — it is better to have a simple Todo list than none at all.`,
     `\n### How to use TodoWrite`,
-    `1. **Before starting work**, call TodoWrite to create your plan with all steps as \`pending\`. Mark the first step as \`in_progress\`.`,
-    `2. **As you complete each step**, call TodoWrite again to update: mark completed steps as \`completed\`, and the next step as \`in_progress\`.`,
+    `1. **FIRST action for any complex task**: call TodoWrite to create your plan with all steps as \`pending\`. Mark the first step as \`in_progress\`. Do this BEFORE reading files, searching code, or making any changes.`,
+    `2. **As you complete each step**, call TodoWrite again to update: mark completed steps as \`completed\`, and the next step as \`in_progress\`. Do this IMMEDIATELY after finishing each step — do not batch updates.`,
     `3. **If you discover new work**, add new todo items to the list.`,
-    `4. Keep todo items **concise and actionable**.`,
+    `4. Keep todo items **concise and actionable** (e.g. "Read main entry point", "Fix XSS vulnerability in auth module", "Add input validation").`,
     `5. Use priorities: \`high\` for critical/blocking items, \`medium\` for normal work, \`low\` for nice-to-have improvements.`,
+    `6. **Never leave a task list with all items as \`pending\`** — always have exactly one item as \`in_progress\` to show current progress.`,
     `</task_management>`
   )
 
@@ -219,7 +221,7 @@ export function buildSystemPrompt(options: {
   }
 
   // ── Agent Teams ──
-  const teamToolNames = ['TeamCreate', 'TaskCreate', 'TaskUpdate', 'TaskList', 'SpawnTeammate', 'TeamSendMessage', 'TeamDelete']
+  const teamToolNames = ['TeamCreate', 'TaskCreate', 'TaskUpdate', 'TaskList', 'SpawnTeammate', 'TeamSendMessage', 'TeamAwait', 'TeamStatus', 'TeamDelete']
   const hasTeamTools = teamToolNames.some((n) => toolDefs.some((t) => t.name === n))
   if (hasTeamTools) {
     parts.push(
@@ -230,14 +232,41 @@ export function buildSystemPrompt(options: {
       `- **TaskUpdate**: Update task status or assign owners`,
       `- **TaskList**: View all tasks and their status`,
       `- **SpawnTeammate**: Launch a new teammate agent that works independently`,
-      `- **TeamSendMessage**: Communicate with teammates (direct, broadcast, shutdown)`,
+      `- **TeamSendMessage**: Communicate with teammates (direct message, broadcast to all, or shutdown_request for graceful stop)`,
+      `- **TeamAwait**: Wait for all teammates to finish and collect their results (blocking)`,
+      `- **TeamStatus**: Get a non-blocking snapshot of the current team state (members, tasks, messages)`,
       `- **TeamDelete**: Clean up the team when done`,
       `\n### When to use Agent Teams`,
-      `- Use teams when a task can be broken into **independent parallel subtasks** (e.g. reviewing multiple modules, testing different features).`,
+      `- Use teams when a task can be broken into **independent parallel subtasks** (e.g. reviewing multiple modules, testing different features, cross-layer coordination).`,
       `- Use the **Plan First, Parallelize Second** approach: plan the work, break it into tasks, then spawn teammates to execute in parallel.`,
-      `- Each teammate gets its own context window — keep task descriptions clear and self-contained.`,
+      `- Each teammate gets its own context window — keep task descriptions clear and self-contained with enough context (specific file paths, focus areas, relevant background).`,
+      `- Right-size tasks: not too small (coordination overhead exceeds benefit) and not too large (teammates work too long without check-in). Aim for self-contained units that produce clear deliverables.`,
       `- Avoid assigning two teammates to edit the same file to prevent conflicts.`,
-      `- For simple sequential tasks, prefer SubAgents or doing the work yourself instead of creating a team.`
+      `- For simple sequential tasks, prefer SubAgents or doing the work yourself instead of creating a team.`,
+      `\n### CRITICAL: Collecting Team Results`,
+      `- **After spawning all teammates, you MUST call TeamAwait** to block and wait for them to finish. Without this, your loop will end before teammates complete and you will lose their results.`,
+      `- The typical flow is: TeamCreate → TaskCreate (×N) → SpawnTeammate (×N) → **TeamAwait** → review results → TeamDelete.`,
+      `- TeamAwait returns a comprehensive summary including each member's status, all task statuses, and messages exchanged.`,
+      `- After TeamAwait returns, you can review the results and report back to the user.`,
+      `- Teammates automatically send a completion summary to you when they finish — these appear as team messages in the TeamAwait result.`,
+      `\n### Teammate Behavior`,
+      `- **Auto-claim tasks**: After completing their assigned task, teammates automatically claim the next unassigned, unblocked pending task and continue working. You don't need to manually reassign.`,
+      `- **Graceful shutdown**: Use TeamSendMessage with type "shutdown_request" to ask a teammate to finish their current work and stop. This is preferred over hard-stopping which interrupts mid-tool-call.`,
+      `- **Task dependencies**: Tasks with \`depends_on\` won't be auto-claimed until all dependency tasks are completed.`,
+      `- **Monitoring**: Use TeamStatus at any time for a non-blocking snapshot of team progress. Use TaskList to check task-specific status.`
+    )
+  }
+
+  // ── Skills ──
+  if (skills && skills.length > 0) {
+    parts.push(
+      `\n<skills>`,
+      `You have access to Skills — pre-defined knowledge and instructions for specific tasks. Use the Skill tool to load a skill's detailed content when a task matches its description.`,
+      `\nAvailable skills:`,
+      ...skills.map((s) => `- **${s.name}**: ${s.description}`),
+      `\nTo use a skill, call the Skill tool with the SkillName parameter matching one of the names above.`,
+      `\nIMPORTANT: If the user's message begins with "[Skill: <name>]", it means they have explicitly selected that skill. You MUST immediately call the Skill tool with that SkillName as your first action, then follow the loaded instructions to complete the user's request.`,
+      `</skills>`
     )
   }
 

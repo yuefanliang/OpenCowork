@@ -67,11 +67,14 @@ class AnthropicProvider implements APIProvider {
               toolName: data.content_block.name,
             }
           }
+          // thinking blocks are handled via their deltas
           break
 
         case 'content_block_delta':
           if (data.delta.type === 'text_delta') {
             yield { type: 'text_delta', text: data.delta.text }
+          } else if (data.delta.type === 'thinking_delta') {
+            yield { type: 'thinking_delta', thinking: data.delta.thinking }
           } else if (data.delta.type === 'input_json_delta') {
             toolInputBuffer += data.delta.partial_json
             yield { type: 'tool_call_delta', argumentsDelta: data.delta.partial_json }
@@ -120,6 +123,8 @@ class AnthropicProvider implements APIProvider {
           role: m.role === 'tool' ? 'user' : m.role,
           content: blocks.map((b) => {
             switch (b.type) {
+              case 'thinking':
+                return { type: 'thinking', thinking: b.thinking }
               case 'text':
                 return { type: 'text', text: b.text }
               case 'tool_use':

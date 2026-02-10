@@ -9,6 +9,8 @@ import { taskListTool } from './tools/task-list'
 import { spawnTeammateTool } from './tools/spawn-teammate'
 import { sendMessageTool } from './tools/send-message'
 import { teamDeleteTool } from './tools/team-delete'
+import { teamAwaitTool } from './tools/team-await'
+import { teamStatusTool } from './tools/team-status'
 
 const TEAM_TOOLS = [
   teamCreateTool,
@@ -17,6 +19,8 @@ const TEAM_TOOLS = [
   taskListTool,
   spawnTeammateTool,
   sendMessageTool,
+  teamAwaitTool,
+  teamStatusTool,
   teamDeleteTool,
 ]
 

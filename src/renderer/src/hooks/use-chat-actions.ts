@@ -94,10 +94,14 @@ export function useChatActions() {
     } else {
       // Cowork / Code mode: agent loop with tools
       const session = useChatStore.getState().sessions.find((s) => s.id === sessionId)
+      // Load available skills from ~/open-cowork/skills/
+      const skills = await ipcClient.invoke('skills:list') as { name: string; description: string }[]
+
       const agentSystemPrompt = buildSystemPrompt({
         mode: mode as 'cowork' | 'code',
         workingFolder: session?.workingFolder,
         userSystemPrompt: settings.systemPrompt || undefined,
+        skills: Array.isArray(skills) ? skills : [],
       })
       const agentProviderConfig: ProviderConfig = {
         ...providerConfig,
@@ -146,15 +150,22 @@ export function useChatActions() {
           }
         )
 
+        let thinkingDone = false
         for await (const event of loop) {
           if (abortController.signal.aborted) break
 
           switch (event.type) {
+            case 'thinking_delta':
+              useChatStore.getState().appendThinkingDelta(sessionId!, assistantMsgId, event.thinking)
+              break
+
             case 'text_delta':
+              if (!thinkingDone) { thinkingDone = true; useChatStore.getState().completeThinking(sessionId!, assistantMsgId) }
               useChatStore.getState().appendTextDelta(sessionId!, assistantMsgId, event.text)
               break
 
             case 'tool_use_generated':
+              if (!thinkingDone) { thinkingDone = true; useChatStore.getState().completeThinking(sessionId!, assistantMsgId) }
               // Append tool_use block to the current assistant message so UI can render ToolCallCard/SubAgentCard
               useChatStore.getState().appendToolUse(sessionId!, assistantMsgId, {
                 type: 'tool_use',
@@ -201,6 +212,7 @@ export function useChatActions() {
               break
 
             case 'message_end':
+              if (!thinkingDone) { thinkingDone = true; useChatStore.getState().completeThinking(sessionId!, assistantMsgId) }
               if (event.usage) {
                 useChatStore.getState().updateMessage(sessionId!, assistantMsgId, { usage: event.usage })
               }
@@ -289,14 +301,20 @@ async function runSimpleChat(
       signal
     )
 
+    let thinkingDone = false
     for await (const event of stream) {
       if (signal.aborted) break
 
       switch (event.type) {
+        case 'thinking_delta':
+          useChatStore.getState().appendThinkingDelta(sessionId, assistantMsgId, event.thinking!)
+          break
         case 'text_delta':
+          if (!thinkingDone) { thinkingDone = true; useChatStore.getState().completeThinking(sessionId, assistantMsgId) }
           useChatStore.getState().appendTextDelta(sessionId, assistantMsgId, event.text!)
           break
         case 'message_end':
+          if (!thinkingDone) { thinkingDone = true; useChatStore.getState().completeThinking(sessionId, assistantMsgId) }
           if (event.usage) {
             useChatStore.getState().updateMessage(sessionId, assistantMsgId, { usage: event.usage })
           }

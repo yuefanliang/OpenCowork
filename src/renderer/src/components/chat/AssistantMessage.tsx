@@ -19,9 +19,12 @@ import { Avatar, AvatarFallback } from '@renderer/components/ui/avatar'
 import { Bot, Copy, Check, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import type { ContentBlock } from '@renderer/lib/api/types'
 import { ToolCallCard } from './ToolCallCard'
+import { FileChangeCard } from './FileChangeCard'
 import { SubAgentCard } from './SubAgentCard'
 import { TodoCard } from './TodoCard'
+import { ThinkingBlock } from './ThinkingBlock'
 import { TeamEventCard } from './TeamEventCard'
+import { InlineTeammateCard } from './InlineTeammateCard'
 import { subAgentRegistry } from '@renderer/lib/agent/sub-agents/registry'
 import { TEAM_TOOL_NAMES } from '@renderer/lib/agent/teams/register'
 import { useAgentStore } from '@renderer/stores/agent-store'
@@ -198,6 +201,16 @@ export function AssistantMessage({ content, isStreaming, usage, toolResults }: A
         )}
         {content.map((block, i) => {
           switch (block.type) {
+            case 'thinking':
+              return (
+                <ThinkingBlock
+                  key={i}
+                  thinking={block.thinking}
+                  isStreaming={isStreaming}
+                  startedAt={block.startedAt}
+                  completedAt={block.completedAt}
+                />
+              )
             case 'text':
               return (
                 <div key={i} className="prose prose-sm dark:prose-invert max-w-none">
@@ -216,7 +229,18 @@ export function AssistantMessage({ content, isStreaming, usage, toolResults }: A
                   />
                 )
               }
-              // Render Team tools as event cards
+              // Render SpawnTeammate as a full inline card with live state
+              if (block.name === 'SpawnTeammate') {
+                const result = toolResults?.get(block.id)
+                return (
+                  <InlineTeammateCard
+                    key={block.id}
+                    input={block.input}
+                    output={result?.content}
+                  />
+                )
+              }
+              // Render other Team tools as compact event cards
               if (TEAM_TOOL_NAMES.has(block.name)) {
                 const result = toolResults?.get(block.id)
                 return (
@@ -239,6 +263,23 @@ export function AssistantMessage({ content, isStreaming, usage, toolResults }: A
                     input={block.input}
                     output={result?.content}
                     isLive={!!isStreaming}
+                  />
+                )
+              }
+              // Render file mutation tools (Write/Edit/MultiEdit/Delete) as file change cards
+              if (['Write', 'Edit', 'MultiEdit', 'Delete'].includes(block.name)) {
+                const result = toolResults?.get(block.id)
+                const liveTc = liveToolCallMap?.get(block.id)
+                return (
+                  <FileChangeCard
+                    key={block.id}
+                    name={block.name}
+                    input={block.input}
+                    output={liveTc?.output ?? result?.content}
+                    status={liveTc?.status ?? (result?.isError ? 'error' : 'completed')}
+                    error={liveTc?.error}
+                    startedAt={liveTc?.startedAt}
+                    completedAt={liveTc?.completedAt}
                   />
                 )
               }
