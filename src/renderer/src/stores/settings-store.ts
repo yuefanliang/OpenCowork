@@ -16,6 +16,8 @@ interface SettingsStore {
   language: 'en' | 'zh'
   autoApprove: boolean
   devMode: boolean
+  thinkingEnabled: boolean
+  teamToolsEnabled: boolean
 
   updateSettings: (patch: Partial<Omit<SettingsStore, 'updateSettings'>>) => void
 }
@@ -35,6 +37,8 @@ export const useSettingsStore = create<SettingsStore>()(
       language: 'en',
       autoApprove: false,
       devMode: false,
+      thinkingEnabled: false,
+      teamToolsEnabled: false,
 
       updateSettings: (patch) => set(patch),
     }),
@@ -53,6 +57,8 @@ export const useSettingsStore = create<SettingsStore>()(
         language: state.language,
         autoApprove: state.autoApprove,
         devMode: state.devMode,
+        thinkingEnabled: state.thinkingEnabled,
+        teamToolsEnabled: state.teamToolsEnabled,
         // NOTE: apiKey is intentionally excluded from localStorage persistence.
         // In production, it should be stored securely in the main process.
       }),

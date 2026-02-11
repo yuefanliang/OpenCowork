@@ -1,4 +1,4 @@
-import type { ProviderConfig, ToolDefinition, UnifiedMessage, TokenUsage, ToolResultContent } from '../api/types'
+import type { ProviderConfig, ToolDefinition, UnifiedMessage, TokenUsage, ToolResultContent, RequestDebugInfo } from '../api/types'
 
 // --- Tool Call Runtime State ---
 
@@ -75,6 +75,7 @@ export type AgentEvent =
   | { type: 'iteration_end'; stopReason: string; toolResults?: { toolUseId: string; content: ToolResultContent; isError?: boolean }[] }
   | { type: 'loop_end'; reason: 'completed' | 'max_iterations' | 'aborted' | 'error' }
   | { type: 'error'; error: Error }
+  | { type: 'request_debug'; debugInfo: RequestDebugInfo }
 
 // --- Agent Loop Stop Reasons ---
 

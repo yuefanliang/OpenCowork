@@ -8,6 +8,8 @@ import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { useUIStore, type SettingsTab } from '@renderer/stores/ui-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
+import { formatTokens } from '@renderer/lib/format-tokens'
+import { useDebouncedTokens } from '@renderer/hooks/use-estimated-tokens'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { Textarea } from '@renderer/components/ui/textarea'
@@ -44,6 +46,7 @@ const menuItems: MenuItem[] = [
 function GeneralPanel(): React.JSX.Element {
   const settings = useSettingsStore()
   const { setTheme } = useTheme()
+  const promptTokens = useDebouncedTokens(settings.systemPrompt)
 
   return (
     <div className="space-y-8">
@@ -108,7 +111,7 @@ function GeneralPanel(): React.JSX.Element {
             <p className="text-xs text-muted-foreground">自定义指令，将追加到内置系统提示词之后</p>
           </div>
           {settings.systemPrompt && (
-            <span className="text-[10px] text-muted-foreground/50">{settings.systemPrompt.length} 字符</span>
+            <span className="text-[10px] text-muted-foreground/50 tabular-nums">{promptTokens > 0 ? `~${formatTokens(promptTokens)} tokens` : ''}</span>
           )}
         </div>
         <Textarea
@@ -118,6 +121,25 @@ function GeneralPanel(): React.JSX.Element {
           rows={4}
           className="max-w-lg"
         />
+      </section>
+
+      <Separator />
+
+      {/* Team Tools */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between max-w-lg">
+          <div>
+            <label className="text-sm font-medium">Team Tools</label>
+            <p className="text-xs text-muted-foreground">启用 Agent Team 协作功能，允许 AI 创建和管理并行团队</p>
+          </div>
+          <Switch
+            checked={settings.teamToolsEnabled}
+            onCheckedChange={(checked) => settings.updateSettings({ teamToolsEnabled: checked })}
+          />
+        </div>
+        {settings.teamToolsEnabled && (
+          <p className="text-xs text-muted-foreground/70">已启用：AI 可使用 TeamCreate、SpawnTeammate 等工具进行多智能体协作</p>
+        )}
       </section>
 
       <Separator />

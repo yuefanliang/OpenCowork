@@ -141,20 +141,18 @@ export function registerSkillsHandlers(): void {
   /**
    * skills:load — read the SKILL.md content for a given skill name.
    */
-  ipcMain.handle('skills:load', async (_event, args: { name: string }): Promise<{ content: string } | { error: string }> => {
+  ipcMain.handle('skills:load', async (_event, args: { name: string }): Promise<{ content: string; workingDirectory: string } | { error: string }> => {
     try {
-      const mdPath = path.join(SKILLS_DIR, args.name, SKILLS_FILENAME)
+      const skillDir = path.join(SKILLS_DIR, args.name)
+      const mdPath = path.join(skillDir, SKILLS_FILENAME)
       if (!fs.existsSync(mdPath)) {
         return { error: `Skill "${args.name}" not found at ${mdPath}` }
       }
       const raw = fs.readFileSync(mdPath, 'utf-8')
-      console.log('[Skills:load] raw length:', raw.length, 'first 80 chars:', JSON.stringify(raw.slice(0, 80)))
-      console.log('[Skills:load] has frontmatter:', /^---/.test(raw), 'line ending hex:', Buffer.from(raw.slice(0, 10)).toString('hex'))
       // Strip YAML frontmatter so AI only sees actionable instructions
       // Use \r?\n to handle both LF and CRLF line endings
       const content = raw.replace(/^---\s*\r?\n[\s\S]*?\r?\n---\s*(?:\r?\n)?/, '')
-      console.log('[Skills:load] stripped length:', content.trimStart().length, 'first 80 chars:', JSON.stringify(content.trimStart().slice(0, 80)))
-      return { content: content.trimStart() }
+      return { content: content.trimStart(), workingDirectory: skillDir }
     } catch (err) {
       return { error: String(err) }
     }

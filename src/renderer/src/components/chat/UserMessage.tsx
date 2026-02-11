@@ -2,14 +2,19 @@ import { useState, useRef, useEffect } from 'react'
 import { Avatar, AvatarFallback } from '@renderer/components/ui/avatar'
 import { Button } from '@renderer/components/ui/button'
 import { User, Pencil, Check, X, Copy } from 'lucide-react'
+import { formatTokens } from '@renderer/lib/format-tokens'
+import { useMemoizedTokens } from '@renderer/hooks/use-estimated-tokens'
+import type { ImageBlock } from '@renderer/lib/api/types'
 
 interface UserMessageProps {
   content: string
+  images?: ImageBlock[]
   isLast?: boolean
   onEdit?: (newContent: string) => void
 }
 
-export function UserMessage({ content, isLast, onEdit }: UserMessageProps): React.JSX.Element {
+export function UserMessage({ content, images, isLast, onEdit }: UserMessageProps): React.JSX.Element {
+  const memoizedTokens = useMemoizedTokens(content)
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(content)
   const [copied, setCopied] = useState(false)
@@ -98,11 +103,31 @@ export function UserMessage({ content, isLast, onEdit }: UserMessageProps): Reac
             </div>
           </div>
         ) : (
-          <div className="text-sm whitespace-pre-wrap leading-relaxed">{content}</div>
+          <>
+            {images && images.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {images.map((img, idx) => {
+                  const src = img.source.type === 'base64'
+                    ? `data:${img.source.mediaType || 'image/png'};base64,${img.source.data}`
+                    : img.source.url || ''
+                  return (
+                    <img
+                      key={idx}
+                      src={src}
+                      alt=""
+                      className="max-w-[240px] max-h-[180px] rounded-lg border border-border/60 shadow-sm object-contain cursor-pointer hover:shadow-md transition-shadow"
+                      onClick={() => window.open(src, '_blank')}
+                    />
+                  )
+                })}
+              </div>
+            )}
+            {content && <div className="text-sm whitespace-pre-wrap leading-relaxed">{content}</div>}
+          </>
         )}
         {!editing && content.length > 50 && (
-          <p className="mt-1 text-[10px] text-muted-foreground/0 group-hover/user:text-muted-foreground/40 transition-colors">
-            {content.split(/\s+/).filter(Boolean).length} words · {content.length} chars
+          <p className="mt-1 text-[10px] text-muted-foreground/0 group-hover/user:text-muted-foreground/40 transition-colors tabular-nums">
+            {formatTokens(memoizedTokens)} tokens
           </p>
         )}
       </div>

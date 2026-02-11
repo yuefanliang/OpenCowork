@@ -59,6 +59,9 @@ interface ProviderStore {
   getFastProviderConfig: () => ProviderConfig | null
   /** Clamp user maxTokens to model's maxOutputTokens if exceeded */
   getEffectiveMaxTokens: (userMaxTokens: number, modelId?: string) => number
+  /** Whether the active model supports thinking and its config */
+  getActiveModelSupportsThinking: () => boolean
+  getActiveModelThinkingConfig: () => import('../lib/api/types').ThinkingConfig | undefined
 
   // Migration
   _migrated: boolean
@@ -217,6 +220,16 @@ export const useProviderStore = create<ProviderStore>()(
         return Math.min(userMaxTokens, model.maxOutputTokens)
       },
 
+      getActiveModelSupportsThinking: () => {
+        const model = get().getActiveModelConfig()
+        return model?.supportsThinking ?? false
+      },
+
+      getActiveModelThinkingConfig: () => {
+        const model = get().getActiveModelConfig()
+        return model?.thinkingConfig
+      },
+
       _markMigrated: () => set({ _migrated: true }),
     }),
     {
@@ -260,6 +273,9 @@ function ensureBuiltinPresets(): void {
         if (m.maxOutputTokens == null && presetModel.maxOutputTokens != null) patch.maxOutputTokens = presetModel.maxOutputTokens
         if (m.supportsVision == null && presetModel.supportsVision != null) patch.supportsVision = presetModel.supportsVision
         if (m.supportsFunctionCall == null && presetModel.supportsFunctionCall != null) patch.supportsFunctionCall = presetModel.supportsFunctionCall
+        // Always sync thinking config from preset (API compatibility, not user preference)
+        if (presetModel.supportsThinking != null && m.supportsThinking !== presetModel.supportsThinking) patch.supportsThinking = presetModel.supportsThinking
+        if (presetModel.thinkingConfig != null) patch.thinkingConfig = presetModel.thinkingConfig
         if (Object.keys(patch).length > 0) { dirty = true; return { ...m, ...patch } }
         return m
       })

@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Check,
   X,
+  Brain,
 } from 'lucide-react'
 import { nanoid } from 'nanoid'
 import { toast } from 'sonner'
@@ -34,8 +35,9 @@ import {
   useProviderStore,
   builtinProviderPresets,
 } from '@renderer/stores/provider-store'
-import type { ProviderType, AIModelConfig, AIProvider } from '@renderer/lib/api/types'
-import { ProviderIcon } from './provider-icons'
+import type { ProviderType, AIModelConfig, AIProvider, ThinkingConfig } from '@renderer/lib/api/types'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
+import { ProviderIcon, ModelIcon } from './provider-icons'
 
 // --- Fetch models from provider API ---
 
@@ -181,6 +183,7 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
   const toggleProviderEnabled = useProviderStore((s) => s.toggleProviderEnabled)
   const addModel = useProviderStore((s) => s.addModel)
   const removeModel = useProviderStore((s) => s.removeModel)
+  const updateModel = useProviderStore((s) => s.updateModel)
   const toggleModelEnabled = useProviderStore((s) => s.toggleModelEnabled)
   const setProviderModels = useProviderStore((s) => s.setProviderModels)
 
@@ -191,6 +194,7 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
   const [newModelId, setNewModelId] = useState('')
   const [newModelName, setNewModelName] = useState('')
   const [modelSearch, setModelSearch] = useState('')
+  const [editingThinkingModel, setEditingThinkingModel] = useState<AIModelConfig | null>(null)
   const [testModelId, setTestModelId] = useState(provider.models.find((m) => m.enabled)?.id ?? provider.models[0]?.id ?? '')
 
   const filteredModels = useMemo(() => {
@@ -338,7 +342,7 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
                 <SelectValue placeholder={provider.models[0]?.id || '无可用模型'} />
               </SelectTrigger>
               <SelectContent>
-                {provider.models.filter((m) => m.enabled).map((m) => (
+                {(provider.models.some((m) => m.enabled) ? provider.models.filter((m) => m.enabled) : provider.models).map((m) => (
                   <SelectItem key={m.id} value={m.id} className="text-xs">{m.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -458,7 +462,7 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
                     key={model.id}
                     className="flex items-center gap-3 px-3 py-2 hover:bg-muted/30 transition-colors group"
                   >
-                    <ProviderIcon builtinId={provider.builtinId} size={16} className="shrink-0 opacity-40" />
+                    <ModelIcon icon={model.icon} modelId={model.id} providerBuiltinId={provider.builtinId} size={16} className="shrink-0 opacity-40" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-xs font-medium truncate">{model.name}</p>
@@ -480,6 +484,24 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
                         )}
                       </div>
                     </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className={`size-5 flex items-center justify-center rounded transition-colors ${
+                            model.supportsThinking
+                              ? 'text-violet-500 hover:bg-violet-500/10'
+                              : 'text-muted-foreground/20 hover:text-muted-foreground/50 hover:bg-muted/40'
+                          } opacity-0 group-hover:opacity-100`}
+                          onClick={() => setEditingThinkingModel(model)}
+                        >
+                          <Brain className="size-3" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-[11px]">
+                        {model.supportsThinking ? '编辑 Think 配置' : '配置 Think 支持'}
+                      </TooltipContent>
+                    </Tooltip>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -499,7 +521,150 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
           </div>
         </section>
       </div>
+
+      {/* Thinking config dialog */}
+      {editingThinkingModel && (
+        <ThinkingConfigDialog
+          model={editingThinkingModel}
+          open={!!editingThinkingModel}
+          onOpenChange={(v) => { if (!v) setEditingThinkingModel(null) }}
+          onSave={(supportsThinking, thinkingConfig) => {
+            updateModel(provider.id, editingThinkingModel.id, {
+              supportsThinking,
+              thinkingConfig: supportsThinking ? thinkingConfig : undefined,
+            })
+            setEditingThinkingModel(null)
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+// --- Thinking Config Dialog ---
+
+function ThinkingConfigDialog({
+  model,
+  open,
+  onOpenChange,
+  onSave,
+}: {
+  model: AIModelConfig
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  onSave: (supportsThinking: boolean, thinkingConfig?: ThinkingConfig) => void
+}): React.JSX.Element {
+  const [enabled, setEnabled] = useState(model.supportsThinking ?? false)
+  const [bodyParamsJson, setBodyParamsJson] = useState(
+    model.thinkingConfig?.bodyParams ? JSON.stringify(model.thinkingConfig.bodyParams, null, 2) : '{\n  \n}'
+  )
+  const [forceTemp, setForceTemp] = useState(
+    model.thinkingConfig?.forceTemperature?.toString() ?? ''
+  )
+  const [disabledBodyParamsJson, setDisabledBodyParamsJson] = useState(
+    model.thinkingConfig?.disabledBodyParams ? JSON.stringify(model.thinkingConfig.disabledBodyParams, null, 2) : ''
+  )
+  const [jsonError, setJsonError] = useState('')
+
+  const handleSave = (): void => {
+    if (!enabled) {
+      onSave(false)
+      return
+    }
+    try {
+      const parsed = JSON.parse(bodyParamsJson)
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        setJsonError('启用参数必须是 JSON 对象')
+        return
+      }
+      const config: ThinkingConfig = { bodyParams: parsed }
+      if (disabledBodyParamsJson.trim()) {
+        try {
+          const disabledParsed = JSON.parse(disabledBodyParamsJson)
+          if (typeof disabledParsed === 'object' && disabledParsed !== null && !Array.isArray(disabledParsed)) {
+            config.disabledBodyParams = disabledParsed
+          } else {
+            setJsonError('关闭参数必须是 JSON 对象')
+            return
+          }
+        } catch {
+          setJsonError('关闭参数 JSON 格式无效')
+          return
+        }
+      }
+      if (forceTemp.trim()) {
+        const t = parseFloat(forceTemp)
+        if (!isNaN(t)) config.forceTemperature = t
+      }
+      onSave(true, config)
+    } catch {
+      setJsonError('启用参数 JSON 格式无效')
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>配置 Think 支持</DialogTitle>
+          <DialogDescription>
+            为模型 <span className="font-medium text-foreground">{model.name}</span> 配置深度思考参数
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium">启用 Think 支持</label>
+            <Switch checked={enabled} onCheckedChange={setEnabled} />
+          </div>
+
+          {enabled && (
+            <>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">启用时 Body 参数 (JSON)</label>
+                <p className="text-[11px] text-muted-foreground">启用 Think 时合并到请求 body 的额外参数</p>
+                <textarea
+                  value={bodyParamsJson}
+                  onChange={(e) => { setBodyParamsJson(e.target.value); setJsonError('') }}
+                  className="w-full h-24 rounded-md border bg-muted/30 px-3 py-2 font-mono text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                  spellCheck={false}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">关闭时 Body 参数 (JSON，可选)</label>
+                <p className="text-[11px] text-muted-foreground">关闭 Think 时合并到请求 body 的参数，留空则不发送</p>
+                <textarea
+                  value={disabledBodyParamsJson}
+                  onChange={(e) => { setDisabledBodyParamsJson(e.target.value); setJsonError('') }}
+                  className="w-full h-24 rounded-md border bg-muted/30 px-3 py-2 font-mono text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                  spellCheck={false}
+                  placeholder="留空则不发送"
+                />
+                {jsonError && <p className="text-[11px] text-destructive">{jsonError}</p>}
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">强制 Temperature (可选)</label>
+                <p className="text-[11px] text-muted-foreground">Anthropic 要求 temperature=1，留空则不覆盖</p>
+                <Input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="2"
+                  placeholder="留空不覆盖"
+                  value={forceTemp}
+                  onChange={(e) => setForceTemp(e.target.value)}
+                  className="w-32 text-xs"
+                />
+              </div>
+            </>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>取消</Button>
+            <Button size="sm" onClick={handleSave}>保存</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 

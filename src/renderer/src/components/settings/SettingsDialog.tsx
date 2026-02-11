@@ -15,7 +15,7 @@ import { Button } from '@renderer/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
 import { Input } from '@renderer/components/ui/input'
 import { Settings } from 'lucide-react'
-import { ProviderIcon } from './provider-icons'
+import { ProviderIcon, ModelIcon } from './provider-icons'
 
 export function SettingsDialog(): React.JSX.Element {
   const open = useUIStore((s) => s.settingsOpen)
@@ -79,7 +79,12 @@ export function SettingsDialog(): React.JSX.Element {
                     </SelectTrigger>
                     <SelectContent>
                       {enabledModels.map((m) => (
-                        <SelectItem key={m.id} value={m.id} className="text-xs">{m.name}</SelectItem>
+                        <SelectItem key={m.id} value={m.id} className="text-xs">
+                          <span className="flex items-center gap-2">
+                            <ModelIcon icon={m.icon} modelId={m.id} providerBuiltinId={activeProvider?.builtinId} size={14} />
+                            {m.name}
+                          </span>
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -103,7 +108,12 @@ export function SettingsDialog(): React.JSX.Element {
                     </SelectTrigger>
                     <SelectContent>
                       {enabledModels.map((m) => (
-                        <SelectItem key={m.id} value={m.id} className="text-xs">{m.name}</SelectItem>
+                        <SelectItem key={m.id} value={m.id} className="text-xs">
+                          <span className="flex items-center gap-2">
+                            <ModelIcon icon={m.icon} modelId={m.id} providerBuiltinId={activeProvider?.builtinId} size={14} />
+                            {m.name}
+                          </span>
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

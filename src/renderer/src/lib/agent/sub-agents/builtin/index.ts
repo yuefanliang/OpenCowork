@@ -1,5 +1,5 @@
 import { subAgentRegistry } from '../registry'
-import { createSubAgentTool } from '../create-tool'
+import { createTaskTool } from '../create-tool'
 import { toolRegistry } from '../../tool-registry'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
@@ -12,8 +12,9 @@ import { plannerAgent } from './planner'
 const builtinAgents = [codeSearchAgent, codeReviewAgent, plannerAgent]
 
 /**
- * Register all built-in SubAgents in both the SubAgent registry
- * and the tool registry (so the main agent can invoke them as tools).
+ * Register all built-in SubAgents in the SubAgent registry,
+ * then register one unified "Task" tool in the tool registry
+ * that dispatches to the appropriate SubAgent via the "subType" parameter.
  */
 export function registerBuiltinSubAgents(): void {
   const providerGetter = (): ProviderConfig => {
@@ -38,8 +39,11 @@ export function registerBuiltinSubAgents(): void {
     }
   }
 
+  // Register each SubAgent definition in the registry
   for (const def of builtinAgents) {
     subAgentRegistry.register(def)
-    toolRegistry.register(createSubAgentTool(def, providerGetter))
   }
+
+  // Register one unified Task tool that dispatches by subType
+  toolRegistry.register(createTaskTool(providerGetter))
 }

@@ -25,7 +25,7 @@ Extract and analyze academic/scientific PDF papers.
 2. Extract text from the paper.
 
    ```bash
-   python ~/.open-cowork/skills/pdf-academic/scripts/extract_text.py "INPUT_FILE_PATH"
+   python scripts/extract_text.py "INPUT_FILE_PATH"
    ```
 
    The script prints extracted text directly to stdout. You do NOT need to read a separate file — just use the shell output.
@@ -66,7 +66,7 @@ Extract and analyze academic/scientific PDF papers.
 5. (Optional) Extract only the references section:
 
    ```bash
-   python ~/.open-cowork/skills/pdf-academic/scripts/extract_references.py "INPUT_FILE_PATH"
+   python scripts/extract_references.py "INPUT_FILE_PATH"
    ```
 
 ## Edge cases

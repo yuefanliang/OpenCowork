@@ -189,7 +189,10 @@ function formatInputAsMessage(_subAgentName: string, input: Record<string, unkno
   // Build a natural language message from the SubAgent input
   const parts: string[] = []
 
-  if (input.query) {
+  // Unified Task tool sends "prompt" as the detailed task description
+  if (input.prompt) {
+    parts.push(String(input.prompt))
+  } else if (input.query) {
     parts.push(String(input.query))
   } else if (input.task) {
     parts.push(String(input.task))

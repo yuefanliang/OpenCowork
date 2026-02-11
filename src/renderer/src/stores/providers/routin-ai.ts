@@ -8,28 +8,29 @@ export const routinAiPreset: BuiltinProviderPreset = {
   defaultEnabled: true,
   defaultModels: [
     // ── OpenAI — GPT-4o family (cache: 50% off input) ──
-    { id: 'gpt-4o', name: 'GPT-4o', enabled: true, contextLength: 128_000, maxOutputTokens: 16_384, supportsVision: true, supportsFunctionCall: true, inputPrice: 2.5, outputPrice: 10, cacheCreationPrice: 2.5, cacheHitPrice: 1.25 },
-    { id: 'gpt-4o-mini', name: 'GPT-4o Mini', enabled: true, contextLength: 128_000, maxOutputTokens: 16_384, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.15, outputPrice: 0.6, cacheCreationPrice: 0.15, cacheHitPrice: 0.075 },
+    { id: 'gpt-4o', name: 'GPT-4o', icon: 'openai', enabled: true, contextLength: 128_000, maxOutputTokens: 16_384, supportsVision: true, supportsFunctionCall: true, inputPrice: 2.5, outputPrice: 10, cacheCreationPrice: 2.5, cacheHitPrice: 1.25 },
+    { id: 'gpt-4o-mini', name: 'GPT-4o Mini', icon: 'openai', enabled: true, contextLength: 128_000, maxOutputTokens: 16_384, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.15, outputPrice: 0.6, cacheCreationPrice: 0.15, cacheHitPrice: 0.075 },
     // ── OpenAI — O-series reasoning (cache: 50% off input) ──
-    { id: 'o3-mini', name: 'o3 Mini', enabled: true, contextLength: 200_000, maxOutputTokens: 100_000, supportsVision: false, supportsFunctionCall: true, inputPrice: 1.1, outputPrice: 4.4, cacheCreationPrice: 1.1, cacheHitPrice: 0.55 },
+    { id: 'o3-mini', name: 'o3 Mini', icon: 'openai', enabled: true, contextLength: 200_000, maxOutputTokens: 100_000, supportsVision: false, supportsFunctionCall: true, inputPrice: 1.1, outputPrice: 4.4, cacheCreationPrice: 1.1, cacheHitPrice: 0.55, supportsThinking: true, thinkingConfig: { bodyParams: { reasoning_effort: 'medium' } } },
     // ── OpenAI — GPT-4.1 family (cache: 75% off input) ──
-    { id: 'gpt-4.1', name: 'GPT-4.1', enabled: true, contextLength: 1_048_576, maxOutputTokens: 32_768, supportsVision: true, supportsFunctionCall: true, inputPrice: 2, outputPrice: 8, cacheCreationPrice: 2, cacheHitPrice: 0.5 },
-    { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', enabled: true, contextLength: 1_048_576, maxOutputTokens: 32_768, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.4, outputPrice: 1.6, cacheCreationPrice: 0.4, cacheHitPrice: 0.1 },
-    { id: 'gpt-4.1-nano', name: 'GPT-4.1 Nano', enabled: true, contextLength: 1_048_576, maxOutputTokens: 32_768, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.1, outputPrice: 0.4, cacheCreationPrice: 0.1, cacheHitPrice: 0.025 },
+    { id: 'gpt-4.1', name: 'GPT-4.1', icon: 'openai', enabled: true, contextLength: 1_048_576, maxOutputTokens: 32_768, supportsVision: true, supportsFunctionCall: true, inputPrice: 2, outputPrice: 8, cacheCreationPrice: 2, cacheHitPrice: 0.5 },
+    { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', icon: 'openai', enabled: true, contextLength: 1_048_576, maxOutputTokens: 32_768, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.4, outputPrice: 1.6, cacheCreationPrice: 0.4, cacheHitPrice: 0.1 },
+    { id: 'gpt-4.1-nano', name: 'GPT-4.1 Nano', icon: 'openai', enabled: true, contextLength: 1_048_576, maxOutputTokens: 32_768, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.1, outputPrice: 0.4, cacheCreationPrice: 0.1, cacheHitPrice: 0.025 },
     // ── MiniMax ──
-    { id: 'MiniMax-M2.1', name: 'MiniMax M2.1', enabled: true, contextLength: 196_608, maxOutputTokens: 16_384, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.27, outputPrice: 0.95, cacheHitPrice: 0.03 },
-    { id: 'MiniMax-M2.1-lightning', name: 'MiniMax M2.1 Lightning', enabled: true, contextLength: 196_608, maxOutputTokens: 16_384, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.14, outputPrice: 0.48 },
+    { id: 'MiniMax-M2.1', name: 'MiniMax M2.1', icon: 'minimax', enabled: true, contextLength: 196_608, maxOutputTokens: 16_384, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.27, outputPrice: 0.95, cacheHitPrice: 0.03 },
+    { id: 'MiniMax-M2.1-lightning', name: 'MiniMax M2.1 Lightning', icon: 'minimax', enabled: true, contextLength: 196_608, maxOutputTokens: 16_384, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.14, outputPrice: 0.48 },
     // ── DeepSeek ──
-    { id: 'deepseek-v3.2', name: 'DeepSeek V3.2', enabled: true, contextLength: 163_840, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.28, outputPrice: 0.42, cacheCreationPrice: 0.28, cacheHitPrice: 0.028 },
+    { id: 'deepseek-v3.2', name: 'DeepSeek V3.2', icon: 'deepseek', enabled: true, contextLength: 163_840, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.28, outputPrice: 0.42, cacheCreationPrice: 0.28, cacheHitPrice: 0.028, supportsThinking: true, thinkingConfig: { bodyParams: { enable_thinking: true } } },
     // ── Google Gemini ──
-    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview', enabled: true, contextLength: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.5, outputPrice: 3 },
-    { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview', enabled: true, contextLength: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsFunctionCall: true, inputPrice: 2, outputPrice: 12 },
+    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview', icon: 'gemini', enabled: true, contextLength: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.5, outputPrice: 3, supportsThinking: true, thinkingConfig: { bodyParams: { reasoning_effort: 'medium' } } },
+    { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview', icon: 'gemini', enabled: true, contextLength: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsFunctionCall: true, inputPrice: 2, outputPrice: 12, supportsThinking: true, thinkingConfig: { bodyParams: { reasoning_effort: 'medium' } } },
     // ── Z.AI / GLM (智谱) ──
-    { id: 'glm-4.5', name: 'GLM 4.5', enabled: true, contextLength: 1_048_576, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.07, outputPrice: 0.28 },
-    { id: 'glm-4.7', name: 'GLM 4.7', enabled: true, contextLength: 1_048_576, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.28, outputPrice: 1.12 },
-    { id: 'glm-4.7-flash', name: 'GLM 4.7 Flash', enabled: true, contextLength: 202_752, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.14, outputPrice: 0.56 },
+    { id: 'glm-4.5', name: 'GLM 4.5', icon: 'chatglm', enabled: true, contextLength: 1_048_576, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.07, outputPrice: 0.28 },
+    { id: 'glm-4.7', name: 'GLM 4.7', icon: 'chatglm', enabled: true, contextLength: 1_048_576, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.28, outputPrice: 1.12 },
+    { id: 'glm-4.7-flash', name: 'GLM 4.7 Flash', icon: 'chatglm', enabled: true, contextLength: 202_752, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.14, outputPrice: 0.56 },
     {
       id: "mimo-v2-flash", name: "Mimo V2 Flash",
+      icon: 'mimo',
       enabled: true,
       contextLength: 262_144,
       maxOutputTokens: 131072,
@@ -37,7 +38,12 @@ export const routinAiPreset: BuiltinProviderPreset = {
       supportsFunctionCall: true,
       inputPrice: 0.1,
       cacheHitPrice: 0.01,
-      outputPrice: 0.3
+      outputPrice: 0.3,
+      supportsThinking: true,
+      thinkingConfig: {
+        bodyParams: { thinking: { type: 'enabled' } },
+        disabledBodyParams: { thinking: { type: 'disabled' } },
+      },
     }
   ],
 }

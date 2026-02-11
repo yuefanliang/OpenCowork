@@ -40,9 +40,7 @@ function formatToolSummary(name: string, input: Record<string, unknown>): string
   if (name === 'Delete') return `Delete: ${input.file_path ?? input.path ?? ''}`
   if (name === 'TodoWrite') return `Update todo list (${Array.isArray(input.todos) ? input.todos.length : '?'} items)`
   if (name === 'TodoRead') return `Read current todo list`
-  if (name === 'CodeSearch') return `Search codebase: ${input.query ?? ''}`
-  if (name === 'CodeReview') return `Review: ${input.target ?? ''} (${input.focus ?? 'all'})`
-  if (name === 'Planner') return `Plan: ${input.task ?? ''}`
+  if (name === 'Task') return `[${input.subType ?? '?'}] ${input.description ?? ''}`
   return null
 }
 

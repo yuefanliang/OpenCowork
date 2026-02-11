@@ -1,3 +1,4 @@
+import { encode } from 'gpt-tokenizer'
 import type { TokenUsage, AIModelConfig } from './api/types'
 
 /**
@@ -48,4 +49,13 @@ export function formatCost(cost: number): string {
   if (cost < 0.001) return '<$0.001'
   if (cost < 0.01) return `$${cost.toFixed(3)}`
   return `$${cost.toFixed(2)}`
+}
+
+/**
+ * Estimate the number of tokens in a string using OpenAI's tokenizer (cl100k_base).
+ * Use this only when the LLM does not provide token usage — prefer API-reported counts.
+ */
+export function estimateTokens(text: string): number {
+  if (!text) return 0
+  return encode(text).length
 }

@@ -70,12 +70,17 @@ export async function generateSessionTitle(userMessage: string): Promise<Session
     }
     clearTimeout(timeout)
 
-    const raw = title.trim()
-    if (!raw) return null
+    // Strip thinking tags, markdown fences, and surrounding whitespace
+    const cleaned = title
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/```(?:json)?\s*([\s\S]*?)```/g, '$1')
+      .trim()
+    if (!cleaned) return null
 
-    // Try to parse JSON response
+    // Try to parse JSON response — use a non-greedy match scoped to a single object
     try {
-      const jsonMatch = raw.match(/\{[\s\S]*\}/)
+      const jsonMatch = cleaned.match(/\{[^{}]*"title"\s*:\s*"[^"]*"[^{}]*\}/)
+        ?? cleaned.match(/\{[\s\S]*?\}/)
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0])
         if (parsed.title && parsed.icon) {
@@ -87,7 +92,7 @@ export async function generateSessionTitle(userMessage: string): Promise<Session
     } catch { /* fall through to plain-text fallback */ }
 
     // Fallback: treat entire response as title, use default icon
-    let plainTitle = raw.replace(/^["']|["']$/g, '').trim()
+    let plainTitle = cleaned.replace(/^["']|["']$/g, '').replace(/[{}]/g, '').trim()
     if (plainTitle.length > 40) plainTitle = plainTitle.slice(0, 40) + '...'
     return { title: plainTitle, icon: 'message-square' }
   } catch {

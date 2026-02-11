@@ -21,10 +21,10 @@ Extract text from PDF files and produce structured summaries.
    pip install pymupdf
    ```
 
-2. Extract text from the PDF using the bundled script (installed at `~/.open-cowork/skills/`).
+2. Extract text from the PDF using the bundled script.
 
    ```bash
-   python ~/.open-cowork/skills/pdf-summary/scripts/extract_text.py "INPUT_FILE_PATH"
+   python scripts/extract_text.py "INPUT_FILE_PATH"
    ```
 
    The script prints extracted text directly to stdout (page-separated). You do NOT need to read a separate file — just use the shell output.

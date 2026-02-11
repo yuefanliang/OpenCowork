@@ -9,6 +9,7 @@ export const deepseekPreset: BuiltinProviderPreset = {
     {
       id: 'deepseek-chat',
       name: 'DeepSeek V3.2 (Chat)',
+      icon: 'deepseek',
       enabled: true,
       contextLength: 128_000,
       maxOutputTokens: 8_192,
@@ -16,11 +17,14 @@ export const deepseekPreset: BuiltinProviderPreset = {
       supportsFunctionCall: true,
       inputPrice: 0.28,
       outputPrice: 0.42, cacheCreationPrice: 0.28,
-      cacheHitPrice: 0.028
+      cacheHitPrice: 0.028,
+      supportsThinking: true,
+      thinkingConfig: { bodyParams: { enable_thinking: true } }
     },
     {
       id: 'deepseek-reasoner',
       name: 'DeepSeek V3.2 (Reasoner)',
+      icon: 'deepseek',
       enabled: true,
       contextLength: 128_000,
       maxOutputTokens: 64_000,

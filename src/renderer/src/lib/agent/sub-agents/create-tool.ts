@@ -3,6 +3,7 @@ import type { SubAgentDefinition, SubAgentEvent } from './types'
 import type { ToolCallState } from '../types'
 import { runSubAgent } from './runner'
 import { subAgentEvents } from './events'
+import { subAgentRegistry } from './registry'
 import type { ProviderConfig, TokenUsage } from '../../api/types'
 import { useAgentStore } from '../../../stores/agent-store'
 import { useSettingsStore } from '../../../stores/settings-store'
@@ -46,9 +47,45 @@ export function parseSubAgentMeta(output: string): { meta: SubAgentMeta | null; 
   }
 }
 
+/** The unified Task tool name */
+export const TASK_TOOL_NAME = 'Task'
+
 /**
- * Creates a ToolHandler that wraps a SubAgent definition.
- * This allows the main agent to invoke SubAgents as regular tools.
+ * Build the description for the unified Task tool by embedding
+ * all registered SubAgent names and descriptions.
+ */
+function buildTaskDescription(agents: SubAgentDefinition[]): string {
+  const agentLines = agents
+    .map((a) => `- **${a.name}**: ${a.description} (tools: ${a.allowedTools.join(', ')})`)
+    .join('\n')
+
+  return `Launch a specialized sub-agent to perform a focused task autonomously. The sub-agent runs its own agent loop with a restricted set of tools and returns a final report.
+
+Available sub-agents (use the corresponding name as "subType"):
+${agentLines}
+
+When to use the Task tool:
+- If you are searching for a keyword or file and are not confident that you will find the right match in the first few tries, use Task with subType "CodeSearch" to perform the search for you.
+- If you need a code review, use Task with subType "CodeReview".
+- If you need to plan a complex multi-file change, use Task with subType "Planner".
+
+When NOT to use the Task tool:
+- If you want to read a specific file path, use the Read or Glob tool instead, to find the match more quickly.
+- If you are searching for a specific class definition like "class Foo", use the Glob tool instead.
+- If you are searching for code within a specific file or set of 2-3 files, use the Read tool instead.
+- Writing code and running bash commands (use other tools for that).
+
+Usage notes:
+1. Launch multiple tasks concurrently whenever possible, to maximize performance; to do that, use a single message with multiple tool uses.
+2. When the sub-agent is done, it will return a single message back to you. The result returned by the sub-agent is not visible to the user. To show the user the result, you should send a text message back to the user with a concise summary of the result.
+3. Each sub-agent invocation is stateless. You will not be able to send additional messages to the sub-agent, nor will the sub-agent be able to communicate with you outside of its final report. Therefore, your prompt should contain a highly detailed task description for the sub-agent to perform autonomously and you should specify exactly what information the sub-agent should return back to you in its final and only message to you.
+4. The sub-agent's outputs should generally be trusted.
+5. Clearly tell the sub-agent whether you expect it to write code or just to do research (search, file reads, web fetches, etc.), since it is not aware of the user's intent.`
+}
+
+/**
+ * Creates a single unified "Task" ToolHandler that dispatches to
+ * the appropriate SubAgent based on the "subType" parameter.
  *
  * The providerGetter is called at execution time to get the current
  * provider config (API key, model, etc.) from the settings store.
@@ -56,17 +93,43 @@ export function parseSubAgentMeta(output: string): { meta: SubAgentMeta | null; 
  * SubAgent events are emitted to the global subAgentEvents bus
  * so the UI layer can track inner progress.
  */
-export function createSubAgentTool(
-  def: SubAgentDefinition,
+export function createTaskTool(
   providerGetter: () => ProviderConfig
 ): ToolHandler {
+  const agents = subAgentRegistry.getAll()
+  const subTypeEnum = agents.map((a) => a.name)
+
   return {
     definition: {
-      name: def.name,
-      description: def.description,
-      inputSchema: def.inputSchema,
+      name: TASK_TOOL_NAME,
+      description: buildTaskDescription(agents),
+      inputSchema: {
+        type: 'object',
+        properties: {
+          subType: {
+            type: 'string',
+            enum: subTypeEnum,
+            description: 'The name of the sub-agent to invoke',
+          },
+          description: {
+            type: 'string',
+            description: 'A short (3-5 word) description of the task',
+          },
+          prompt: {
+            type: 'string',
+            description: 'The detailed task for the sub-agent to perform',
+          },
+        },
+        required: ['subType', 'description', 'prompt'],
+      },
     },
     execute: async (input, ctx) => {
+      const subType = String(input.subType ?? '')
+      const def = subAgentRegistry.get(subType)
+      if (!def) {
+        return JSON.stringify({ error: `Unknown subType "${subType}". Available: ${subTypeEnum.join(', ')}` })
+      }
+
       // Acquire concurrency slot (blocks if 2 SubAgents are already running)
       await subAgentLimiter.acquire(ctx.signal)
 

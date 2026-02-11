@@ -1,4 +1,4 @@
-import type { UnifiedMessage, ToolResultContent } from '@renderer/lib/api/types'
+import type { UnifiedMessage, ToolResultContent, ImageBlock } from '@renderer/lib/api/types'
 import { UserMessage } from './UserMessage'
 import { AssistantMessage } from './AssistantMessage'
 
@@ -18,25 +18,28 @@ export function MessageItem({ message, isStreaming, isLastUserMessage, onEditUse
   const inner = (() => {
     switch (message.role) {
       case 'user': {
-        // Extract user text from complex content (ignore tool_result blocks)
+        // Extract user text and images from complex content (ignore tool_result blocks)
         let userText: string
+        let userImages: ImageBlock[] = []
         if (typeof message.content === 'string') {
           userText = message.content
         } else {
           const textBlocks = message.content.filter((b) => b.type === 'text')
           userText = textBlocks.length > 0 ? textBlocks.map((b) => b.text).join('\n') : ''
+          userImages = message.content.filter((b): b is ImageBlock => b.type === 'image')
         }
-        if (!userText) return null
+        if (!userText && userImages.length === 0) return null
         return (
           <UserMessage
             content={userText}
+            images={userImages}
             isLast={isLastUserMessage}
             onEdit={onEditUserMessage}
           />
         )
       }
       case 'assistant':
-        return <AssistantMessage content={message.content} isStreaming={isStreaming} usage={message.usage} toolResults={toolResults} debugInfo={message.debugInfo} />
+        return <AssistantMessage content={message.content} isStreaming={isStreaming} usage={message.usage} toolResults={toolResults} msgId={message.id} />
       default:
         return null
     }

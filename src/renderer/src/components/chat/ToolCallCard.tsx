@@ -6,6 +6,7 @@ import type { ToolResultContent } from '@renderer/lib/api/types'
 import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { MONO_FONT } from '@renderer/lib/constants'
+import { estimateTokens, formatTokens } from '@renderer/lib/format-tokens'
 
 interface ToolCallCardProps {
   name: string
@@ -57,9 +58,7 @@ export function inputSummary(name: string, input: Record<string, unknown>): stri
   if (name === 'Grep' && input.pattern) return `grep: ${input.pattern}`
   if (name === 'TodoWrite' && input.todos) return `${(input.todos as unknown[]).length} items`
   if (name === 'TodoRead') return 'read todos'
-  if (name === 'CodeSearch') return String(input.query ?? '').slice(0, 60)
-  if (name === 'CodeReview') return `${input.target ?? ''} (${input.focus ?? 'all'})`
-  if (name === 'Planner') return String(input.task ?? '').slice(0, 60)
+  if (name === 'Task') return `[${input.subType ?? '?'}] ${String(input.description ?? '').slice(0, 50)}`
   const keys = Object.keys(input)
   if (keys.length === 0) return ''
   const first = input[keys[0]]
@@ -192,8 +191,9 @@ function ReadOutputBlock({ output, filePath }: { output: string; filePath: strin
   )
 }
 
-function BashOutputBlock({ command, output }: { command: string; output: string }): React.JSX.Element {
+function BashOutputBlock({ output }: { output: string }): React.JSX.Element {
   const [expanded, setExpanded] = React.useState(false)
+  const scrollRef = React.useRef<HTMLDivElement>(null)
   // Try to parse JSON output from shell tool (may contain stdout, stderr, exitCode)
   const parsed = React.useMemo(() => {
     try {
@@ -207,6 +207,15 @@ function BashOutputBlock({ command, output }: { command: string; output: string 
   const isLong = text.length > 1000
   const displayed = isLong && !expanded ? text.slice(0, 1000) + '\n…' : text
   const lineCount = text.split('\n').length
+  const tokenCount = React.useMemo(() => estimateTokens(text), [text])
+
+  // Auto-scroll to bottom when output is streaming (no exitCode yet)
+  React.useEffect(() => {
+    if (exitCode === undefined && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [text, exitCode])
+
   return (
     <div>
       <div className="mb-1 flex items-center gap-1.5">
@@ -221,13 +230,10 @@ function BashOutputBlock({ command, output }: { command: string; output: string 
         <CopyBtn text={text} />
       </div>
       <div
+        ref={scrollRef}
         className="rounded-md border bg-zinc-950 overflow-auto max-h-72 text-[11px] font-mono"
         style={{ fontFamily: MONO_FONT }}
       >
-        <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-zinc-800 text-green-400/80">
-          <span className="select-none text-green-500/60">$</span>
-          <span>{command}</span>
-        </div>
         {text && (
           <pre className="px-3 py-2 whitespace-pre-wrap break-words text-zinc-300/80">{displayed}</pre>
         )}
@@ -237,7 +243,7 @@ function BashOutputBlock({ command, output }: { command: string; output: string 
           onClick={() => setExpanded(!expanded)}
           className="mt-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
         >
-          {expanded ? 'Show less' : `Show all (${text.length} chars, ${lineCount} lines)`}
+          {expanded ? 'Show less' : `Show all (~${formatTokens(tokenCount)} tokens, ${lineCount} lines)`}
         </button>
       )}
     </div>
@@ -768,17 +774,15 @@ function StructuredInput({ name, input }: { name: string; input: Record<string, 
     )
   }
 
-  // SubAgents (CodeSearch, CodeReview, Planner)
-  if (name === 'CodeSearch' || name === 'CodeReview' || name === 'Planner') {
-    const fields: Array<{ label: string; value: string }> = []
-    for (const [k, v] of Object.entries(input)) {
-      if (v != null && v !== '') fields.push({ label: k, value: String(v) })
-    }
+  // Unified Task tool (SubAgents)
+  if (name === 'Task') {
     return (
       <div className="space-y-0.5">
-        {fields.map((f) => (
-          <InputField key={f.label} label={f.label} value={f.value.length > 200 ? f.value.slice(0, 200) + '…' : f.value} />
-        ))}
+        <InputField label="subType" value={String(input.subType ?? '')} />
+        <InputField label="description" value={String(input.description ?? '')} />
+        {input.prompt != null && (
+          <InputField label="prompt" value={String(input.prompt).length > 200 ? String(input.prompt).slice(0, 200) + '…' : String(input.prompt)} />
+        )}
       </div>
     )
   }
@@ -971,7 +975,7 @@ export function ToolCallCard({
             <ReadOutputBlock output={outputAsString(output)!} filePath={String(input.file_path ?? input.path ?? '')} />
           )}
           {output && name === 'Bash' && outputAsString(output) && (
-            <BashOutputBlock command={String(input.command ?? '')} output={outputAsString(output)!} />
+            <BashOutputBlock output={outputAsString(output)!} />
           )}
           {output && name === 'Grep' && outputAsString(output) && (
             <GrepOutputBlock output={outputAsString(output)!} pattern={String(input.pattern ?? '')} />

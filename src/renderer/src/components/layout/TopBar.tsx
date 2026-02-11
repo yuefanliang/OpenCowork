@@ -13,18 +13,18 @@ import { cn } from '@renderer/lib/utils'
 import { useTheme } from 'next-themes'
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover'
 import { WindowControls } from './WindowControls'
-import { ProviderIcon } from '@renderer/components/settings/provider-icons'
+import { ProviderIcon, ModelIcon } from '@renderer/components/settings/provider-icons'
 
 function ModelSwitcher({ hasCustomPrompt }: { hasCustomPrompt: boolean }): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const activeProviderId = useProviderStore((s) => s.activeProviderId)
   const activeModelId = useProviderStore((s) => s.activeModelId)
   const providers = useProviderStore((s) => s.providers)
+  const setActiveProvider = useProviderStore((s) => s.setActiveProvider)
   const setActiveModel = useProviderStore((s) => s.setActiveModel)
 
+  const enabledProviders = providers.filter((p) => p.enabled)
   const activeProvider = providers.find((p) => p.id === activeProviderId)
-  const enabledModels = activeProvider?.models.filter((m) => m.enabled) ?? []
-  const providerName = activeProvider?.name ?? 'No provider'
   const shortName = (activeModelId.split('/').pop()?.replace(/-\d{8}$/, '') ?? activeModelId) || 'No model'
 
   return (
@@ -34,36 +34,53 @@ function ModelSwitcher({ hasCustomPrompt }: { hasCustomPrompt: boolean }): React
           className="titlebar-no-drag hidden sm:inline-flex items-center gap-1 text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors truncate max-w-[180px] rounded px-1 py-0.5 hover:bg-muted/40"
           title={`${activeModelId || 'No model'} (click to switch)`}
         >
-          <ProviderIcon builtinId={activeProvider?.builtinId} size={14} />
+          <ModelIcon icon={activeProvider?.models.find((m) => m.id === activeModelId)?.icon} modelId={activeModelId} providerBuiltinId={activeProvider?.builtinId} size={14} />
           {shortName}
           {hasCustomPrompt && <span className="size-1.5 rounded-full bg-violet-400/60 shrink-0" title="Custom system prompt active" />}
           <ChevronDown className="size-2.5 shrink-0 opacity-50" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-56 p-1" align="end">
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50 px-2 py-1 uppercase tracking-wider">
-          <ProviderIcon builtinId={activeProvider?.builtinId} size={12} />
-          {providerName}
-        </div>
-        {enabledModels.length === 0 ? (
-          <div className="px-2 py-1.5 text-xs text-muted-foreground">No models available</div>
+      <PopoverContent className="w-56 p-1 max-h-80 overflow-y-auto" align="end">
+        {enabledProviders.length === 0 ? (
+          <div className="px-2 py-1.5 text-xs text-muted-foreground">No providers available</div>
         ) : (
-          enabledModels.map((m) => (
-            <button
-              key={m.id}
-              className={cn(
-                'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs hover:bg-muted/60 transition-colors',
-                m.id === activeModelId && 'bg-muted/40 font-medium'
-              )}
-              onClick={() => {
-                setActiveModel(m.id)
-                setOpen(false)
-              }}
-            >
-              {m.id === activeModelId ? <Check className="size-3 text-primary" /> : <span className="size-3" />}
-              <span className="truncate">{m.name || m.id.replace(/-\d{8}$/, '')}</span>
-            </button>
-          ))
+          enabledProviders.map((provider) => {
+            const models = provider.models.filter((m) => m.enabled)
+            return (
+              <div key={provider.id}>
+                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50 px-2 py-1 uppercase tracking-wider">
+                  <ProviderIcon builtinId={provider.builtinId} size={12} />
+                  {provider.name}
+                </div>
+                {models.length === 0 ? (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground/40">No models</div>
+                ) : (
+                  models.map((m) => {
+                    const isActive = provider.id === activeProviderId && m.id === activeModelId
+                    return (
+                      <button
+                        key={`${provider.id}-${m.id}`}
+                        className={cn(
+                          'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs hover:bg-muted/60 transition-colors',
+                          isActive && 'bg-muted/40 font-medium'
+                        )}
+                        onClick={() => {
+                          if (provider.id !== activeProviderId) {
+                            setActiveProvider(provider.id)
+                          }
+                          setActiveModel(m.id)
+                          setOpen(false)
+                        }}
+                      >
+                        {isActive ? <Check className="size-3 text-primary" /> : <ModelIcon icon={m.icon} modelId={m.id} providerBuiltinId={provider.builtinId} size={12} className="opacity-60" />}
+                        <span className="truncate">{m.name || m.id.replace(/-\d{8}$/, '')}</span>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            )
+          })
         )}
       </PopoverContent>
     </Popover>

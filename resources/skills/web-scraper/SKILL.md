@@ -49,7 +49,7 @@ crawl4ai-setup
 Use this for most websites. It's fast, lightweight, and works for articles, docs, blogs, etc.
 
 ```bash
-python ~/.open-cowork/skills/web-scraper/scripts/fetch_page.py "URL"
+python scripts/fetch_page.py "URL"
 ```
 
 Options:
@@ -75,7 +75,7 @@ python fetch_page.py "https://example.com" --raw --max-length 5000
 Search using DuckDuckGo (no API key required).
 
 ```bash
-python ~/.open-cowork/skills/web-scraper/scripts/search_web.py "search query"
+python scripts/search_web.py "search query"
 ```
 
 Options:
@@ -97,7 +97,7 @@ python search_web.py "AI 最新进展" --news --region cn-zh --max-results 5
 Use this only when `fetch_page.py` returns empty or incomplete content (SPA, React/Vue apps, pages that load content via JS).
 
 ```bash
-python ~/.open-cowork/skills/web-scraper/scripts/crawl_dynamic.py "URL"
+python scripts/crawl_dynamic.py "URL"
 ```
 
 Options:
@@ -112,7 +112,7 @@ Options:
 Extract all links with their text labels, categorized by type (internal, external, resource).
 
 ```bash
-python ~/.open-cowork/skills/web-scraper/scripts/extract_links.py "URL"
+python scripts/extract_links.py "URL"
 ```
 
 Options:

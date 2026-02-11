@@ -4,6 +4,7 @@ import { Separator } from '@renderer/components/ui/separator'
 import { toolRegistry } from '@renderer/lib/agent/tool-registry'
 import { subAgentRegistry } from '@renderer/lib/agent/sub-agents/registry'
 import { TEAM_TOOL_NAMES } from '@renderer/lib/agent/teams/register'
+import { useSettingsStore } from '@renderer/stores/settings-store'
 import type { ToolDefinition } from '@renderer/lib/api/types'
 
 const categoryMap: Record<string, { label: string; icon: React.ReactNode }> = {
@@ -13,14 +14,12 @@ const categoryMap: Record<string, { label: string; icon: React.ReactNode }> = {
   task: { label: 'Task Management', icon: <ListChecks className="size-3.5" /> },
 }
 
-const SUB_AGENT_NAMES = new Set<string>()
-
 function getCategory(name: string): string {
   if (['Read', 'Write', 'Edit', 'MultiEdit', 'LS', 'Delete'].includes(name)) return 'filesystem'
   if (['Glob', 'Grep'].includes(name)) return 'search'
   if (['Bash'].includes(name)) return 'shell'
   if (['TodoRead', 'TodoWrite'].includes(name)) return 'task'
-  if (SUB_AGENT_NAMES.has(name)) return 'subagent'
+  if (name === 'Task') return 'subagent'
   return 'other'
 }
 
@@ -42,13 +41,10 @@ function groupTools(tools: ToolDefinition[]): { key: string; label: string; icon
 export function SkillsPanel(): React.JSX.Element {
   const allTools = toolRegistry.getDefinitions()
   const subAgents = subAgentRegistry.getAll()
+  const teamToolsEnabled = useSettingsStore((s) => s.teamToolsEnabled)
 
-  // Update the set so getCategory can filter SubAgents out of regular groups
-  SUB_AGENT_NAMES.clear()
-  for (const sa of subAgents) SUB_AGENT_NAMES.add(sa.name)
-
-  // Regular tools only (exclude SubAgent and Team tools from the main list)
-  const tools = allTools.filter((t) => !SUB_AGENT_NAMES.has(t.name) && !TEAM_TOOL_NAMES.has(t.name))
+  // Regular tools only (exclude Task and Team tools from the main list)
+  const tools = allTools.filter((t) => t.name !== 'Task' && !TEAM_TOOL_NAMES.has(t.name))
   const teamTools = allTools.filter((t) => TEAM_TOOL_NAMES.has(t.name))
 
   if (tools.length === 0 && subAgents.length === 0) {
@@ -114,7 +110,7 @@ export function SkillsPanel(): React.JSX.Element {
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-medium text-violet-500 uppercase tracking-wider flex items-center gap-1.5">
               <Brain className="size-3.5" />
-              SubAgents
+              Task (Sub-Agents)
             </h4>
             <Badge variant="secondary" className="text-[10px]">
               {subAgents.length}
@@ -141,7 +137,7 @@ export function SkillsPanel(): React.JSX.Element {
           </ul>
         </>
       )}
-      {teamTools.length > 0 && (
+      {teamToolsEnabled && teamTools.length > 0 && (
         <>
           <Separator />
           <div className="flex items-center justify-between">

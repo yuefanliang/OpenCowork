@@ -6,7 +6,7 @@ import type {
   UnifiedMessage,
   ContentBlock,
 } from './types'
-import { ipcStreamRequest } from '../ipc/api-stream'
+import { ipcStreamRequest, maskHeaders } from '../ipc/api-stream'
 import { registerProvider } from './provider'
 
 class OpenAIResponsesProvider implements APIProvider {
@@ -31,19 +31,35 @@ class OpenAIResponsesProvider implements APIProvider {
     if (config.temperature !== undefined) body.temperature = config.temperature
     if (config.maxTokens) body.max_tokens = config.maxTokens
 
+    // Merge thinking/reasoning params when enabled; explicit disable params when off
+    if (config.thinkingEnabled && config.thinkingConfig) {
+      Object.assign(body, config.thinkingConfig.bodyParams)
+      if (config.thinkingConfig.forceTemperature !== undefined) {
+        body.temperature = config.thinkingConfig.forceTemperature
+      }
+    } else if (!config.thinkingEnabled && config.thinkingConfig?.disabledBodyParams) {
+      Object.assign(body, config.thinkingConfig.disabledBodyParams)
+    }
+
     const baseUrl = (config.baseUrl || 'https://api.openai.com/v1').trim().replace(/\/+$/, '')
     const url = `${baseUrl}/responses`
+
+    const headers = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.apiKey}`,
+    }
+    const bodyStr = JSON.stringify(body)
+
+    // Yield debug info for dev mode inspection
+    yield { type: 'request_debug', debugInfo: { url, method: 'POST', headers: maskHeaders(headers), body: bodyStr, timestamp: Date.now() } }
 
     const argBuffers = new Map<string, string>()
 
     for await (const sse of ipcStreamRequest({
       url,
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify(body),
+      headers,
+      body: bodyStr,
       signal,
     })) {
       if (!sse.data || sse.data === '[DONE]') continue
@@ -126,6 +142,26 @@ class OpenAIResponsesProvider implements APIProvider {
       }
 
       const blocks = m.content as ContentBlock[]
+
+      // Handle user messages with images → multi-part content
+      if (m.role === 'user') {
+        const hasImages = blocks.some((b) => b.type === 'image')
+        if (hasImages) {
+          const parts: unknown[] = []
+          for (const b of blocks) {
+            if (b.type === 'image') {
+              const url = b.source.type === 'base64'
+                ? `data:${b.source.mediaType || 'image/png'};base64,${b.source.data}`
+                : b.source.url || ''
+              parts.push({ type: 'input_image', image_url: url })
+            } else if (b.type === 'text') {
+              parts.push({ type: 'input_text', text: b.text })
+            }
+          }
+          input.push({ type: 'message', role: 'user', content: parts })
+          continue
+        }
+      }
 
       for (const block of blocks) {
         switch (block.type) {

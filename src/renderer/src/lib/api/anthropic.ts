@@ -7,7 +7,7 @@ import type {
   ContentBlock,
   TokenUsage,
 } from './types'
-import { ipcStreamRequest } from '../ipc/api-stream'
+import { ipcStreamRequest, maskHeaders } from '../ipc/api-stream'
 import { registerProvider } from './provider'
 
 class AnthropicProvider implements APIProvider {
@@ -20,7 +20,7 @@ class AnthropicProvider implements APIProvider {
     config: ProviderConfig,
     signal?: AbortSignal
   ): AsyncIterable<StreamEvent> {
-    const body = {
+    const body: Record<string, unknown> = {
       model: config.model,
       max_tokens: config.maxTokens ?? 32000,
       ...(config.systemPrompt ? { system: config.systemPrompt } : {}),
@@ -29,8 +29,28 @@ class AnthropicProvider implements APIProvider {
       stream: true,
     }
 
+    // Merge thinking/reasoning params when enabled; explicit disable params when off
+    if (config.thinkingEnabled && config.thinkingConfig) {
+      Object.assign(body, config.thinkingConfig.bodyParams)
+      if (config.thinkingConfig.forceTemperature !== undefined) {
+        body.temperature = config.thinkingConfig.forceTemperature
+      }
+    } else if (!config.thinkingEnabled && config.thinkingConfig?.disabledBodyParams) {
+      Object.assign(body, config.thinkingConfig.disabledBodyParams)
+    }
+
     const baseUrl = (config.baseUrl || 'https://api.anthropic.com').trim().replace(/\/+$/, '')
     const url = `${baseUrl}/v1/messages`
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-api-key': config.apiKey,
+      'anthropic-version': '2023-06-01',
+    }
+    const bodyStr = JSON.stringify(body)
+
+    // Yield debug info for dev mode inspection
+    yield { type: 'request_debug', debugInfo: { url, method: 'POST', headers: maskHeaders(headers), body: bodyStr, timestamp: Date.now() } }
 
     let toolInputBuffer = ''
     // Anthropic splits usage across two events:
@@ -42,12 +62,8 @@ class AnthropicProvider implements APIProvider {
     for await (const sse of ipcStreamRequest({
       url,
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': config.apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify(body),
+      headers,
+      body: bodyStr,
       signal,
     })) {
       if (!sse.data || sse.data === '[DONE]') continue

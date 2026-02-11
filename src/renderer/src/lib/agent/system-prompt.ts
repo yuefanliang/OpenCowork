@@ -10,10 +10,11 @@ export function buildSystemPrompt(options: {
   workingFolder?: string
   userSystemPrompt?: string
   skills?: { name: string; description: string }[]
+  toolDefs?: import('../api/types').ToolDefinition[]
 }): string {
   const { mode, workingFolder, userSystemPrompt, skills } = options
 
-  const toolDefs = toolRegistry.getDefinitions()
+  const toolDefs = options.toolDefs ?? toolRegistry.getDefinitions()
   const toolList = toolDefs
     .map((t) => `- **${t.name}**: ${t.description}`)
     .join('\n')
@@ -66,6 +67,7 @@ export function buildSystemPrompt(options: {
     `\n<communication_style>`,
     `Be terse and direct. Deliver fact-based progress updates, briefly summarize after clusters of tool calls when needed, and ask for clarification only when genuinely uncertain about intent or requirements.`,
     `<communication_guidelines>`,
+    `- **Think Before Acting**: Before taking ANY action, follow this thinking process: (1) **Understand** — analyze the user's request and identify what they truly need (not just the literal words), consider the context (open files, project structure, conversation history). (2) **Expand** — think about the best approach to solve the problem, consider edge cases, potential pitfalls, and better alternatives the user may not have thought of. (3) **Validate** — before finalizing, verify your plan is logically consistent: does it actually help the user achieve their stated goal? Trace the full causal chain and check for hidden contradictions. (4) **Plan & Act** — form a clear plan based on your validated understanding, then execute. Never rush to give results or call tools — understand and think first, act second. Only ask for clarification when you genuinely cannot infer the intent.`,
     `- Be concise and avoid verbose responses. Minimize output tokens as possible while maintaining helpfulness, quality, and accuracy. Avoid explanations in huge blocks of text or long/nested lists. Instead, prefer concise bullet points and short paragraphs.`,
     `- Refer to the USER in the second person and yourself in the first person.`,
     `- You are rigorous and make absolutely no ungrounded assertions, such as referring to non-existent functions or parameters. Your response should be in the context of the current workspace. When feeling uncertain, use tools to gather more information, and clearly state your uncertainty if there's no way to get unstuck.`,
@@ -143,9 +145,8 @@ export function buildSystemPrompt(options: {
     `- As you read, build a concise mental model of data flow and responsibilities (what calls what, where state is stored/updated, and how errors are handled).`,
     `- Surface any key invariants, assumptions, or high-risk areas you discover that should shape how you implement changes.`,
     `- Identify likely call sites or consumers that must be updated if you change a central abstraction, and note any open questions to resolve before making invasive edits.`,
-    `- You can call multiple tools in parallel; prioritize calling independent tools simultaneously whenever possible.`,
-    `- Batch independent actions into parallel tool calls and keep dependent or destructive commands sequential.`,
-    `- IMPORTANT: If you need to explore the codebase to gather context, and the task does not involve a single file or function which is provided by name, you should use the CodeSearch SubAgent first instead of running many sequential search commands.`,
+    `- **MERGE & PARALLELIZE tool calls**: Always batch independent tool calls into a single turn (e.g. reading multiple files, multiple searches, edits on different files). Only keep calls sequential when there is a data dependency (e.g. read→edit, run→check output). Minimize round-trips.`,
+    `- IMPORTANT: If you need to explore the codebase to gather context, and the task does not involve a single file or function which is provided by name, you should use the Task tool (subType "CodeSearch") first instead of running many sequential search commands.`,
     `- **SKILL-FIRST RULE**: If the user's request involves web scraping, web searching, PDF analysis, or any other task that matches an available Skill, you MUST call the Skill tool FIRST before using any other tool. Do NOT write ad-hoc code for tasks covered by Skills.`,
     `</tool_calling>`
   )
@@ -161,7 +162,15 @@ export function buildSystemPrompt(options: {
     `- If you're building a web app from scratch, give it a beautiful and modern UI with best UX practices.`,
     `- If you're making a very large edit (>300 lines), break it up into multiple smaller edits.`,
     `- Imports must always be at the top of the file. Do not import libraries in the middle of a file.`,
-    `</making_code_changes>`
+    `</making_code_changes>`,
+    `\n<file_data_integrity>`,
+    `## File Format Preservation & Data Integrity`,
+    `When editing user files (CSV, JSON, XML, YAML, config files, etc.):`,
+    `- **Preserve format**: Keep original encoding, line endings (CRLF/LF), indentation, quoting style, delimiters, and whitespace patterns unchanged.`,
+    `- **Read first, edit precisely**: Always read the ENTIRE file before editing. Files may contain comments, metadata, or other sections beyond what the user mentioned — do NOT disturb them. Use precise Edit tool targeting; never rewrite the whole file for partial changes.`,
+    `- **Protect surrounding content**: Verify that content before and after the edit region remains intact. For multi-section files, ensure edits don't corrupt or remove unrelated sections.`,
+    `- **Safe transformations**: Apply changes ONLY to the specified data range. Match existing format when adding new data. Warn the user if a transformation might cause data loss.`,
+    `</file_data_integrity>`
   )
 
   // ── Task Planning ──
@@ -236,19 +245,21 @@ export function buildSystemPrompt(options: {
       `- For multi-file changes, use TodoWrite to track progress.`
     )
 
-    // SubAgent guidelines
+    // SubAgent guidelines (unified Task tool)
     const subAgents = subAgentRegistry.getAll()
     if (subAgents.length > 0) {
       parts.push(
-        `\n## SubAgents`,
-        `You have access to specialized SubAgents that run their own agent loops internally:`,
+        `\n## Task (Sub-Agents)`,
+        `You have access to the **Task** tool which launches specialized sub-agents that run their own agent loops internally.`,
+        `Use the \`subType\` parameter to select which sub-agent to invoke:`,
         ...subAgents.map((sa) => `- **${sa.name}**: ${sa.description} (uses: ${sa.allowedTools.join(', ')})`),
-        `\n### When to use SubAgents`,
-        `- Use **CodeSearch** when you need to explore an unfamiliar codebase or find specific patterns across many files.`,
-        `- Use **CodeReview** when asked to review code quality, find bugs, or suggest improvements.`,
-        `- Use **Planner** when the task is complex and requires understanding the project structure before acting.`,
-        `- SubAgents are read-only explorers — they cannot modify files. Use them to gather context, then act yourself.`,
-        `- Prefer SubAgents over doing many sequential Glob/Grep/Read calls yourself when the search is open-ended.`
+        `\n### When to use the Task tool`,
+        `- Use Task with subType **CodeSearch** when you need to explore an unfamiliar codebase or find specific patterns across many files.`,
+        `- Use Task with subType **CodeReview** when asked to review code quality, find bugs, or suggest improvements.`,
+        `- Use Task with subType **Planner** when the task is complex and requires understanding the project structure before acting.`,
+        `- Sub-agents are read-only explorers — they cannot modify files. Use them to gather context, then act yourself.`,
+        `- Prefer Task over doing many sequential Glob/Grep/Read calls yourself when the search is open-ended.`,
+        `- Launch multiple Task calls concurrently whenever possible to maximize performance.`
       )
     }
   }

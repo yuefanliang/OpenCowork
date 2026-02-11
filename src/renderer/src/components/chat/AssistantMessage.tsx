@@ -17,7 +17,7 @@ import rust from 'react-syntax-highlighter/dist/esm/languages/prism/rust'
 import go from 'react-syntax-highlighter/dist/esm/languages/prism/go'
 import { Avatar, AvatarFallback } from '@renderer/components/ui/avatar'
 import { useTypewriter } from '@renderer/hooks/use-typewriter'
-import { Bot, Copy, Check, ChevronsDownUp, ChevronsUpDown, Bug } from 'lucide-react'
+import { Copy, Check, ChevronsDownUp, ChevronsUpDown, Bug } from 'lucide-react'
 import type { ContentBlock, TokenUsage, ToolResultContent, RequestDebugInfo } from '@renderer/lib/api/types'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { ToolCallCard } from './ToolCallCard'
@@ -28,11 +28,14 @@ import { TodoCard } from './TodoCard'
 import { ThinkingBlock } from './ThinkingBlock'
 import { TeamEventCard } from './TeamEventCard'
 import { InlineTeammateCard } from './InlineTeammateCard'
-import { subAgentRegistry } from '@renderer/lib/agent/sub-agents/registry'
+import { TASK_TOOL_NAME } from '@renderer/lib/agent/sub-agents/create-tool'
 import { TEAM_TOOL_NAMES } from '@renderer/lib/agent/teams/register'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
+import { ModelIcon } from '@renderer/components/settings/provider-icons'
 import { formatTokens, calculateCost, formatCost } from '@renderer/lib/format-tokens'
+import { useMemoizedTokens } from '@renderer/hooks/use-estimated-tokens'
+import { getLastDebugInfo } from '@renderer/lib/debug-store'
 import { MONO_FONT } from '@renderer/lib/constants'
 
 SyntaxHighlighter.registerLanguage('typescript', typescript)
@@ -60,47 +63,61 @@ interface AssistantMessageProps {
   usage?: TokenUsage
   /** Map of toolUseId → output for completed tool results (from next user message) */
   toolResults?: Map<string, { content: ToolResultContent; isError?: boolean }>
-  debugInfo?: RequestDebugInfo
+  msgId?: string
 }
 
-function DebugInfoPanel({ debugInfo }: { debugInfo: RequestDebugInfo }): React.JSX.Element {
-  const [expanded, setExpanded] = useState(false)
-  const formatted = JSON.stringify(
-    { url: debugInfo.url, method: debugInfo.method, headers: debugInfo.headers, body: debugInfo.body ? '(see below)' : undefined, timestamp: new Date(debugInfo.timestamp).toISOString() },
-    null,
-    2
-  )
+function DebugToggleButton({ debugInfo }: { debugInfo: RequestDebugInfo }): React.JSX.Element {
+  const [show, setShow] = useState(false)
   const bodyFormatted = (() => {
     if (!debugInfo.body) return null
     try { return JSON.stringify(JSON.parse(debugInfo.body), null, 2) } catch { return debugInfo.body }
   })()
 
   return (
-    <div className="mt-2">
+    <>
       <button
-        onClick={() => setExpanded((v) => !v)}
-        className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-orange-500 hover:bg-orange-500/10 transition-colors border border-orange-500/30"
+        onClick={() => setShow((v) => !v)}
+        className={`flex items-center rounded px-1 py-0.5 transition-colors ${show ? 'text-orange-500 bg-orange-500/10' : 'text-muted-foreground hover:bg-muted-foreground/10'}`}
       >
-        <Bug className="size-3" />
-        {expanded ? '收起调试信息' : '查看请求调试信息'}
+        <Bug className="size-3.5" />
       </button>
-      {expanded && (
-        <div className="mt-2 rounded-lg border border-orange-500/20 bg-muted/50 overflow-hidden">
-          <div className="px-3 py-1.5 border-b border-orange-500/20 bg-orange-500/5">
-            <span className="text-[10px] font-mono text-orange-500/70 uppercase tracking-wider">Request Debug Info</span>
-          </div>
-          <pre className="p-3 text-[11px] font-mono text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all" style={{ fontFamily: MONO_FONT }}>{formatted}</pre>
-          {bodyFormatted && (
-            <>
-              <div className="px-3 py-1.5 border-t border-orange-500/20 bg-orange-500/5">
-                <span className="text-[10px] font-mono text-orange-500/70 uppercase tracking-wider">Request Body</span>
+      {show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShow(false)}>
+          <div className="w-[640px] max-w-[90vw] max-h-[80vh] rounded-lg border bg-background shadow-2xl flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 py-2.5 border-b bg-muted/30 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <Bug className="size-3.5 text-orange-500" />
+                <span className="text-xs font-medium">Request Debug</span>
               </div>
-              <pre className="p-3 text-[11px] font-mono text-muted-foreground overflow-x-auto whitespace-pre-wrap break-all max-h-96 overflow-y-auto" style={{ fontFamily: MONO_FONT }}>{bodyFormatted}</pre>
-            </>
-          )}
+              <button onClick={() => setShow(false)} className="text-muted-foreground hover:text-foreground text-sm px-1">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <div className="px-4 py-2 space-y-1.5 border-b text-[11px]" style={{ fontFamily: MONO_FONT }}>
+                <div className="flex gap-2"><span className="text-muted-foreground/60 shrink-0">URL</span><span className="text-foreground break-all">{debugInfo.url}</span></div>
+                <div className="flex gap-2"><span className="text-muted-foreground/60 shrink-0">Method</span><span className="text-foreground">{debugInfo.method}</span></div>
+                <div className="flex gap-2"><span className="text-muted-foreground/60 shrink-0">Time</span><span className="text-foreground">{new Date(debugInfo.timestamp).toLocaleTimeString()}</span></div>
+              </div>
+              {bodyFormatted && (
+                <div>
+                  <div className="px-4 py-1.5 bg-muted/20 border-b flex items-center justify-between">
+                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Request Body</span>
+                    <CopyButton text={bodyFormatted} />
+                  </div>
+                  <SyntaxHighlighter
+                    language="json"
+                    style={oneDark}
+                    customStyle={{ margin: 0, padding: '12px 16px', fontSize: '11px', fontFamily: MONO_FONT, background: 'transparent', wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}
+                    codeTagProps={{ style: { fontFamily: MONO_FONT } }}
+                  >
+                    {bodyFormatted}
+                  </SyntaxHighlighter>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
 
@@ -235,9 +252,19 @@ function stripThinkTags(text: string): string {
   return text.replace(/<think>[\s\S]*?(<\/think>|$)/g, '').trim()
 }
 
-export function AssistantMessage({ content, isStreaming, usage, toolResults, debugInfo }: AssistantMessageProps): React.JSX.Element {
+export function AssistantMessage({ content, isStreaming, usage, toolResults, msgId }: AssistantMessageProps): React.JSX.Element {
   const devMode = useSettingsStore((s) => s.devMode)
+  const debugInfo = devMode && msgId ? getLastDebugInfo(msgId) : undefined
   const [toolsCollapsed, setToolsCollapsed] = useState(false)
+
+  // Memoize the plain text extraction for token estimation (used only when no API usage)
+  const plainTextForTokens = useMemo(() => {
+    if (usage || isStreaming) return '' // skip expensive computation when API provides usage
+    return typeof content === 'string'
+      ? stripThinkTags(content)
+      : content.filter((b) => b.type === 'text').map((b) => stripThinkTags(b.text)).join('\n')
+  }, [content, usage, isStreaming])
+  const fallbackTokens = useMemoizedTokens(plainTextForTokens)
 
   // Subscribe to live tool call state for real-time status during streaming
   const pendingToolCalls = useAgentStore((s) => s.pendingToolCalls)
@@ -306,7 +333,7 @@ export function AssistantMessage({ content, isStreaming, usage, toolResults, deb
 
     /** Check if a tool_use block should use the generic ToolCallCard (groupable) */
     const isGroupableTool = (name: string): boolean =>
-      !SPECIAL_TOOLS.has(name) && !TEAM_TOOL_NAMES.has(name) && !subAgentRegistry.has(name)
+      !SPECIAL_TOOLS.has(name) && !TEAM_TOOL_NAMES.has(name) && name !== TASK_TOOL_NAME
 
     // Pre-process: group consecutive same-name groupable tool_use blocks
     type RenderItem =
@@ -343,7 +370,7 @@ export function AssistantMessage({ content, isStreaming, usage, toolResults, deb
         const result = toolResults?.get(block.id)
         return <TeamEventCard key={key} name={block.name} input={block.input} output={result?.content} />
       }
-      if (subAgentRegistry.has(block.name)) {
+      if (block.name === TASK_TOOL_NAME) {
         const result = toolResults?.get(block.id)
         return <SubAgentCard key={key} name={block.name} toolUseId={block.id} input={block.input} output={result?.content} isLive={!!isStreaming} />
       }
@@ -509,41 +536,48 @@ export function AssistantMessage({ content, isStreaming, usage, toolResults, deb
     ? stripThinkTags(content)
     : content.filter((b) => b.type === 'text').map((b) => stripThinkTags(b.text)).join('\n')
 
+  const activeProvider = useProviderStore((s) => {
+    const pid = s.activeProviderId
+    return pid ? s.providers.find((p) => p.id === pid) ?? null : null
+  })
+  const activeModelId = useProviderStore((s) => s.activeModelId)
+  const activeModelCfg = activeProvider?.models.find((m) => m.id === activeModelId)
+  const modelDisplayName = activeModelCfg?.name || activeModelId?.split('/').pop()?.replace(/-\d{8}$/, '') || 'Assistant'
+
   return (
     <div className="group/msg flex gap-3">
       <Avatar className="size-7 shrink-0 ring-1 ring-border/50">
         <AvatarFallback className="bg-gradient-to-br from-secondary to-muted text-secondary-foreground text-xs">
-          <Bot className="size-3.5" />
+          <ModelIcon icon={activeModelCfg?.icon} modelId={activeModelId} providerBuiltinId={activeProvider?.builtinId} size={16} />
         </AvatarFallback>
       </Avatar>
-      <div className="min-w-0 flex-1 pt-0.5">
+      <div className="min-w-0 flex-1 pt-0.5 overflow-hidden">
         <div className="flex items-center gap-2 mb-1">
-          <p className="text-sm font-medium">Assistant</p>
+          <p className="text-sm font-medium">{modelDisplayName}</p>
           {!isStreaming && plainText && (
-            <span className="opacity-0 group-hover/msg:opacity-100 transition-opacity">
+            <span className="opacity-0 group-hover/msg:opacity-100 transition-opacity flex items-center gap-0.5">
               <CopyButton text={plainText} />
+              {devMode && debugInfo && <DebugToggleButton debugInfo={debugInfo} />}
             </span>
           )}
         </div>
         {renderContent()}
-        {devMode && debugInfo && <DebugInfoPanel debugInfo={debugInfo} />}
         {!isStreaming && plainText && (
-          <p className="mt-1 text-[10px] text-muted-foreground/40">
-            {plainText.split(/\s+/).filter(Boolean).length} words
-            {usage && (() => {
+          <p className="mt-1 text-[10px] text-muted-foreground/40 tabular-nums">
+            {usage ? (() => {
               const total = usage.inputTokens + usage.outputTokens
               const modelCfg = useProviderStore.getState().getActiveModelConfig()
               const cost = calculateCost(usage, modelCfg)
               return (
                 <>
-                  {` · ${formatTokens(total)} tokens (${formatTokens(usage.inputTokens)}↓ ${formatTokens(usage.outputTokens)}↑`}
+                  {`${formatTokens(total)} tokens (${formatTokens(usage.inputTokens)}↓ ${formatTokens(usage.outputTokens)}↑`}
                   {usage.cacheReadTokens ? ` · ${formatTokens(usage.cacheReadTokens)} cached` : ''}
                   {usage.reasoningTokens ? ` · ${formatTokens(usage.reasoningTokens)} reasoning` : ''}
                   {')' }
                   {cost !== null && <span className="text-emerald-500/70"> · {formatCost(cost)}</span>}
                 </>
               )
-            })()}
+            })() : `~${formatTokens(fallbackTokens)} tokens`}
           </p>
         )}
       </div>

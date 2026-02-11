@@ -18,7 +18,7 @@ export class ApiStreamError extends Error {
   }
 }
 
-function maskHeaders(headers: Record<string, string>): Record<string, string> {
+export function maskHeaders(headers: Record<string, string>): Record<string, string> {
   const masked: Record<string, string> = {}
   const sensitiveKeys = ['authorization', 'x-api-key', 'api-key']
   for (const [k, v] of Object.entries(headers)) {

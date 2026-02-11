@@ -11,10 +11,13 @@ import { toolRegistry } from '@renderer/lib/agent/tool-registry'
 import { buildSystemPrompt } from '@renderer/lib/agent/system-prompt'
 import { subAgentEvents } from '@renderer/lib/agent/sub-agents/events'
 import { abortAllTeammates } from '@renderer/lib/agent/teams/teammate-runner'
+import { TEAM_TOOL_NAMES } from '@renderer/lib/agent/teams/register'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { createProvider } from '@renderer/lib/api/provider'
 import { generateSessionTitle } from '@renderer/lib/api/generate-title'
-import type { UnifiedMessage, ProviderConfig, TokenUsage, RequestDebugInfo } from '@renderer/lib/api/types'
+import type { UnifiedMessage, ProviderConfig, TokenUsage, RequestDebugInfo, ContentBlock } from '@renderer/lib/api/types'
+import { setLastDebugInfo } from '@renderer/lib/debug-store'
+import type { ImageAttachment } from '@renderer/components/chat/InputArea'
 import type { AgentLoopConfig } from '@renderer/lib/agent/types'
 import { ApiStreamError } from '@renderer/lib/ipc/api-stream'
 
@@ -22,7 +25,7 @@ import { ApiStreamError } from '@renderer/lib/ipc/api-stream'
 const sessionAbortControllers = new Map<string, AbortController>()
 
 export function useChatActions() {
-  const sendMessage = useCallback(async (text: string) => {
+  const sendMessage = useCallback(async (text: string, images?: ImageAttachment[]) => {
     const chatStore = useChatStore.getState()
     const settings = useSettingsStore.getState()
     const agentStore = useAgentStore.getState()
@@ -31,23 +34,29 @@ export function useChatActions() {
     // Build provider config from provider-store (new system) with fallback to settings-store
     const providerConfig = useProviderStore.getState().getActiveProviderConfig()
     const effectiveMaxTokens = useProviderStore.getState().getEffectiveMaxTokens(settings.maxTokens)
+    const activeModelThinkingConfig = useProviderStore.getState().getActiveModelThinkingConfig()
+    const thinkingEnabled = settings.thinkingEnabled && !!activeModelThinkingConfig
     const baseProviderConfig: ProviderConfig | null = providerConfig
       ? {
-          ...providerConfig,
+        ...providerConfig,
+        maxTokens: effectiveMaxTokens,
+        temperature: settings.temperature,
+        systemPrompt: settings.systemPrompt || undefined,
+        thinkingEnabled,
+        thinkingConfig: activeModelThinkingConfig,
+      }
+      : settings.apiKey
+        ? {
+          type: settings.provider,
+          apiKey: settings.apiKey,
+          baseUrl: settings.baseUrl || undefined,
+          model: settings.model,
           maxTokens: effectiveMaxTokens,
           temperature: settings.temperature,
           systemPrompt: settings.systemPrompt || undefined,
+          thinkingEnabled,
+          thinkingConfig: activeModelThinkingConfig,
         }
-      : settings.apiKey
-        ? {
-            type: settings.provider,
-            apiKey: settings.apiKey,
-            baseUrl: settings.baseUrl || undefined,
-            model: settings.model,
-            maxTokens: effectiveMaxTokens,
-            temperature: settings.temperature,
-            systemPrompt: settings.systemPrompt || undefined,
-          }
         : null
 
     if (!baseProviderConfig || !baseProviderConfig.apiKey) {
@@ -64,11 +73,23 @@ export function useChatActions() {
       sessionId = chatStore.createSession(uiStore.mode)
     }
 
-    // Add user message
+    // Add user message (multi-modal when images attached)
+    const userContent: string | ContentBlock[] = images && images.length > 0
+      ? [
+          ...images.map((img) => {
+            const base64 = img.dataUrl.replace(/^data:[^;]+;base64,/, '')
+            return {
+              type: 'image' as const,
+              source: { type: 'base64' as const, mediaType: img.mediaType, data: base64 },
+            }
+          }),
+          ...(text ? [{ type: 'text' as const, text }] : []),
+        ]
+      : text
     const userMsg: UnifiedMessage = {
       id: nanoid(),
       role: 'user',
-      content: text,
+      content: userContent,
       createdAt: Date.now(),
     }
     chatStore.addMessage(sessionId, userMsg)
@@ -110,9 +131,12 @@ export function useChatActions() {
       // Simple chat mode: single API call, no tools
       const chatSystemPrompt = [
         'You are OpenCowork, a helpful AI assistant. Be concise, accurate, and friendly.',
+        'Before responding, follow this thinking process: (1) Understand — identify what the user truly needs, not just the literal words; consider context and implicit constraints. (2) Expand — think about the best way to solve the problem, consider edge cases, potential pitfalls, and better alternatives the user may not have thought of. (3) Validate — before finalizing, verify your answer is logically consistent: does it actually help the user achieve their stated goal? Check the full causal chain — if the user follows your advice, will they accomplish what they want? Watch for hidden contradictions (e.g. if someone needs to wash their car, they must bring the car — suggesting they walk defeats the purpose). (4) Respond — deliver a well-reasoned, logically sound answer that best fits the user\'s real needs. Think first, answer second — never rush to conclusions.',
+        'CRITICAL RULE: Before giving your final answer, always ask yourself: "If the user follows my advice step by step, will they actually achieve their stated goal?" If the answer is no, your response has a logical flaw — stop and reconsider. The user\'s goal defines the constraints; never give advice that makes the goal impossible.',
         'Use markdown formatting in your responses. Use code blocks with language identifiers for code.',
         settings.systemPrompt ? `\n## Additional Instructions\n${settings.systemPrompt}` : '',
       ].filter(Boolean).join('\n')
+      // NOTE: thinkingEnabled is handled below when building the final config
       const chatConfig: ProviderConfig = { ...baseProviderConfig, systemPrompt: chatSystemPrompt }
       agentStore.setSessionStatus(sessionId, 'running')
       try {
@@ -127,11 +151,18 @@ export function useChatActions() {
       // Load available skills from ~/.open-cowork/skills/
       const skills = await ipcClient.invoke('skills:list') as { name: string; description: string }[]
 
+      // Filter out team tools when the feature is disabled
+      const allToolDefs = toolRegistry.getDefinitions()
+      const effectiveToolDefs = settings.teamToolsEnabled
+        ? allToolDefs
+        : allToolDefs.filter((t) => !TEAM_TOOL_NAMES.has(t.name))
+
       const agentSystemPrompt = buildSystemPrompt({
         mode: mode as 'cowork' | 'code',
         workingFolder: session?.workingFolder,
         userSystemPrompt: settings.systemPrompt || undefined,
         skills: Array.isArray(skills) ? skills : [],
+        toolDefs: effectiveToolDefs,
       })
       const agentProviderConfig: ProviderConfig = {
         ...baseProviderConfig,
@@ -140,7 +171,7 @@ export function useChatActions() {
       const loopConfig: AgentLoopConfig = {
         maxIterations: 20,
         provider: agentProviderConfig,
-        tools: toolRegistry.getDefinitions(),
+        tools: effectiveToolDefs,
         systemPrompt: agentSystemPrompt,
         workingFolder: session?.workingFolder,
         signal: abortController.signal,
@@ -168,7 +199,7 @@ export function useChatActions() {
 
       // Request notification permission on first agent run
       if (Notification.permission === 'default') {
-        Notification.requestPermission().catch(() => {})
+        Notification.requestPermission().catch(() => { })
       }
 
       try {
@@ -298,6 +329,12 @@ export function useChatActions() {
               }
               break
 
+            case 'request_debug':
+              if (useSettingsStore.getState().devMode && event.debugInfo) {
+                setLastDebugInfo(assistantMsgId, event.debugInfo)
+              }
+              break
+
             case 'error':
               console.error('[Agent Loop Error]', event.error)
               toast.error('Agent Error', { description: event.error.message })
@@ -305,13 +342,14 @@ export function useChatActions() {
           }
         }
       } catch (err) {
+        console.error('[Agent Loop Exception]', err)
         if (!abortController.signal.aborted) {
           const errMsg = err instanceof Error ? err.message : String(err)
           console.error('[Agent Loop Exception]', err)
           toast.error('Agent failed', { description: errMsg })
           useChatStore.getState().appendTextDelta(sessionId!, assistantMsgId, `\n\n> **Error:** ${errMsg}`)
-          if (err instanceof ApiStreamError) {
-            useChatStore.getState().updateMessage(sessionId!, assistantMsgId, { debugInfo: err.debugInfo as RequestDebugInfo })
+          if (err instanceof ApiStreamError && useSettingsStore.getState().devMode) {
+            setLastDebugInfo(assistantMsgId, err.debugInfo as RequestDebugInfo)
           }
         }
       } finally {
@@ -429,6 +467,11 @@ async function runSimpleChat(
             useChatStore.getState().updateMessage(sessionId, assistantMsgId, { usage: { ...event.usage, contextTokens: event.usage.inputTokens } })
           }
           break
+        case 'request_debug':
+          if (useSettingsStore.getState().devMode && event.debugInfo) {
+            setLastDebugInfo(assistantMsgId, event.debugInfo)
+          }
+          break
         case 'error':
           console.error('[Chat Error]', event.error)
           toast.error('Chat Error', { description: event.error?.message ?? 'Unknown error' })
@@ -441,8 +484,8 @@ async function runSimpleChat(
       console.error('[Chat Exception]', err)
       toast.error('Chat failed', { description: errMsg })
       useChatStore.getState().appendTextDelta(sessionId, assistantMsgId, `\n\n> **Error:** ${errMsg}`)
-      if (err instanceof ApiStreamError) {
-        useChatStore.getState().updateMessage(sessionId, assistantMsgId, { debugInfo: err.debugInfo as RequestDebugInfo })
+      if (err instanceof ApiStreamError && useSettingsStore.getState().devMode) {
+        setLastDebugInfo(assistantMsgId, err.debugInfo as RequestDebugInfo)
       }
     }
   } finally {

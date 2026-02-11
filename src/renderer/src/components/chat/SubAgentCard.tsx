@@ -56,11 +56,11 @@ function CopyOutputBtn({ text }: { text: string }): React.JSX.Element {
 }
 
 interface SubAgentCardProps {
-  /** The SubAgent tool name (CodeSearch, CodeReview, Planner) */
+  /** The tool name ("Task" for unified tool, or legacy SubAgent names) */
   name: string
   /** The tool_use block id, used to match live state for parallel same-name SubAgent calls */
   toolUseId: string
-  /** Input passed by parent agent */
+  /** Input passed by parent agent (includes subType, description, prompt for unified Task) */
   input: Record<string, unknown>
   /** Final output (from completed tool_use result), undefined while running */
   output?: ToolResultContent
@@ -71,6 +71,9 @@ interface SubAgentCardProps {
 export function SubAgentCard({ name, toolUseId, input, output, isLive = false }: SubAgentCardProps): React.JSX.Element {
   const [toolsExpanded, setToolsExpanded] = React.useState(true)
   const [outputExpanded, setOutputExpanded] = React.useState(false)
+
+  // Resolve display name: for unified Task tool, use input.subType; otherwise legacy name
+  const displayName = String(input.subType ?? name)
 
   // Live state from agent store — match by toolUseId for precise identification
   const activeSubAgents = useAgentStore((s) => s.activeSubAgents)
@@ -117,17 +120,17 @@ export function SubAgentCard({ name, toolUseId, input, output, isLive = false }:
     ? (live.completedAt ?? now) - live.startedAt
     : histMeta?.elapsed ?? null
 
-  // Icon
-  const icon = subAgentIcons[name] ?? <Brain className="size-4" />
+  // Icon — resolve by displayName (subType for unified Task, or legacy name)
+  const icon = subAgentIcons[displayName] ?? <Brain className="size-4" />
 
-  // Query/task description from input
-  const queryText = String(input.query ?? input.task ?? input.target ?? '')
+  // Query/task description from input (unified Task uses description/prompt)
+  const queryText = String(input.description ?? input.query ?? input.task ?? input.target ?? '')
 
   const handleOpenPreview = (): void => {
     // Get the best available text content
     const previewText = live?.streamingText || histText || ''
     if (previewText && typeof previewText === 'string') {
-      useUIStore.getState().openMarkdownPreview(`${name} — Result`, previewText)
+      useUIStore.getState().openMarkdownPreview(`${displayName} — Result`, previewText)
     } else {
       useUIStore.getState().openDetailPanel({ type: 'subagent', toolUseId })
     }
@@ -160,7 +163,7 @@ export function SubAgentCard({ name, toolUseId, input, output, isLive = false }:
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold text-violet-600 dark:text-violet-400">{name}</span>
+            <span className="text-sm font-semibold text-violet-600 dark:text-violet-400">{displayName}</span>
             <Badge
               variant={isRunning ? 'default' : isError ? 'destructive' : 'secondary'}
               className={cn('text-[9px] px-1.5 h-4', isRunning && 'bg-violet-500 animate-pulse')}
@@ -353,7 +356,7 @@ export function SubAgentCard({ name, toolUseId, input, output, isLive = false }:
         <div className="border-t border-violet-500/10 px-4 py-1.5 flex items-center gap-2">
           <Loader2 className="size-3 animate-spin text-violet-400" />
           <span className="text-[10px] text-violet-400/70 font-medium">
-            {name} is exploring...
+            {displayName} is exploring...
           </span>
         </div>
       )}

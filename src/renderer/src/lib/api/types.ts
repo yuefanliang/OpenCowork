@@ -82,6 +82,7 @@ export type StreamEventType =
   | 'tool_call_end'
   | 'message_end'
   | 'error'
+  | 'request_debug'
 
 export interface StreamEvent {
   type: StreamEventType
@@ -94,6 +95,7 @@ export interface StreamEvent {
   stopReason?: string
   usage?: TokenUsage
   error?: { type: string; message: string }
+  debugInfo?: RequestDebugInfo
 }
 
 // --- Tool Definitions ---
@@ -108,6 +110,17 @@ export interface ToolDefinition {
   }
 }
 
+// --- Thinking / Reasoning Config ---
+
+export interface ThinkingConfig {
+  /** Extra key-value pairs merged into the request body when thinking is enabled */
+  bodyParams: Record<string, unknown>
+  /** Extra key-value pairs merged into the request body when thinking is explicitly disabled (e.g. MiMo: thinking.type="disabled") */
+  disabledBodyParams?: Record<string, unknown>
+  /** Force-override temperature when thinking is active (e.g. Anthropic requires 1) */
+  forceTemperature?: number
+}
+
 // --- AI Provider Management ---
 
 export type ProviderType = 'anthropic' | 'openai-chat' | 'openai-responses'
@@ -116,6 +129,8 @@ export interface AIModelConfig {
   id: string
   name: string
   enabled: boolean
+  /** Icon key for model-level icon (e.g. 'openai', 'claude', 'gemini', 'deepseek') */
+  icon?: string
   contextLength?: number
   maxOutputTokens?: number
   /** Price per million input tokens (USD) */
@@ -130,6 +145,10 @@ export interface AIModelConfig {
   supportsVision?: boolean
   /** Whether the model supports function/tool calling */
   supportsFunctionCall?: boolean
+  /** Whether the model supports toggleable thinking/reasoning mode */
+  supportsThinking?: boolean
+  /** Configuration describing how to enable thinking for this model */
+  thinkingConfig?: ThinkingConfig
 }
 
 export interface AIProvider {
@@ -154,6 +173,10 @@ export interface ProviderConfig {
   maxTokens?: number
   temperature?: number
   systemPrompt?: string
+  /** Whether thinking mode is enabled for this request */
+  thinkingEnabled?: boolean
+  /** Thinking configuration from the active model */
+  thinkingConfig?: ThinkingConfig
 }
 
 // --- Provider Interface ---

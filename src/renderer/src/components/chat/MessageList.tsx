@@ -296,7 +296,7 @@ export function MessageList({ onRetry, onEditUserMessage }: MessageListProps): R
         </div>
       )}
       <div ref={scrollContainerRef} className="absolute inset-0 overflow-y-auto">
-        <div ref={contentRef} className="mx-auto max-w-3xl space-y-6 p-4">
+        <div ref={contentRef} className="mx-auto max-w-3xl space-y-6 p-4 overflow-hidden">
           {messages.map((msg, idx) => {
             // Hide intermediate user messages that only contain tool_result blocks
             // (they are API-level responses, not real user input — output already shown in ToolCallCard)
@@ -309,12 +309,18 @@ export function MessageList({ onRetry, onEditUserMessage }: MessageListProps): R
               m.role === 'user' && (typeof m.content === 'string' || m.content.some((b) => b.type === 'text'))
             const isLastUser = !streamingMessageId && isRealUserMsg(msg) &&
               !messages.slice(idx + 1).some((m) => isRealUserMsg(m))
-            // Build tool results map for assistant messages (from next user message)
+            // Build tool results map for assistant messages.
+            // Scan ALL consecutive tool_result-only user messages after this assistant message,
+            // because multi-iteration agent loops append to a single assistant message but
+            // create separate user messages for each iteration's tool results.
             let toolResults: Map<string, { content: ToolResultContent; isError?: boolean }> | undefined
             if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-              const nextMsg = messages[idx + 1]
-              if (nextMsg && nextMsg.role === 'user' && Array.isArray(nextMsg.content)) {
-                toolResults = new Map()
+              for (let i = idx + 1; i < messages.length; i++) {
+                const nextMsg = messages[i]
+                if (nextMsg.role !== 'user' || !Array.isArray(nextMsg.content)) break
+                const hasOnlyToolResults = nextMsg.content.every((b) => b.type === 'tool_result')
+                if (!hasOnlyToolResults) break
+                if (!toolResults) toolResults = new Map()
                 for (const block of nextMsg.content) {
                   if (block.type === 'tool_result') {
                     toolResults.set(block.toolUseId, { content: block.content, isError: block.isError })

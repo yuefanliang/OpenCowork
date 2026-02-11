@@ -131,6 +131,12 @@ export async function* runAgentLoop(
             }
             break
 
+          case 'request_debug':
+            if (event.debugInfo) {
+              yield { type: 'request_debug', debugInfo: event.debugInfo }
+            }
+            break
+
           case 'error':
             yield {
               type: 'error',

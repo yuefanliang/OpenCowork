@@ -24,6 +24,8 @@ import { TeamPanel } from '@renderer/components/cowork/TeamPanel'
 
 import { useTeamStore } from '@renderer/stores/team-store'
 
+import { useSettingsStore } from '@renderer/stores/settings-store'
+
 import { cn } from '@renderer/lib/utils'
 
 
@@ -62,6 +64,10 @@ export function RightPanel({ compact = false }: { compact?: boolean }): React.JS
 
   const activeTeam = useTeamStore((s) => s.activeTeam)
 
+  const teamToolsEnabled = useSettingsStore((s) => s.teamToolsEnabled)
+
+  const visibleTabs = teamToolsEnabled ? tabDefs : tabDefs.filter((t) => t.value !== 'team')
+
 
 
   const badgeCounts: Partial<Record<RightPanelTab, number>> = {
@@ -84,7 +90,7 @@ export function RightPanel({ compact = false }: { compact?: boolean }): React.JS
 
       <div className="flex h-10 min-w-0 items-center gap-0.5 overflow-x-auto px-2">
 
-        {tabDefs.map((t) => {
+        {visibleTabs.map((t) => {
 
           const count = badgeCounts[t.value] ?? 0
 
