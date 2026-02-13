@@ -91,8 +91,6 @@ jobs:
         include:
           - os: windows-latest
             platform: win
-          - os: macos-latest
-            platform: mac
           - os: ubuntu-latest
             platform: linux
 
@@ -109,11 +107,6 @@ jobs:
         with:
           node-version: 20
           cache: npm
-
-      # macOS 需要 Python setuptools (node-gyp 依赖)
-      - name: Install Python setuptools (macOS)
-        if: matrix.platform == 'mac'
-        run: python3 -m pip install setuptools --break-system-packages
 
       # Linux 需要构建原生模块的依赖
       - name: Install Linux build dependencies
@@ -134,10 +127,6 @@ jobs:
         run: npx electron-builder --${{ matrix.platform }} --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS: 如果没有配置签名证书，禁用自动发现以避免报错
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CSC_LINK != '' && 'true' || 'false' }}
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK || '' }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD || '' }}
           # Windows 代码签名 (可选)
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK || '' }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD || '' }}
@@ -152,18 +141,6 @@ jobs:
           path: |
             dist/*.exe
             dist/*.exe.blockmap
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload macOS artifacts
-        if: matrix.platform == 'mac'
-        uses: actions/upload-artifact@v4
-        with:
-          name: open-cowork-macos
-          path: |
-            dist/*.dmg
-            dist/*.dmg.blockmap
-            dist/*.zip
           if-no-files-found: error
           retention-days: 30
 
