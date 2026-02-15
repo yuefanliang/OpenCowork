@@ -11,6 +11,14 @@ interface APIStreamRequest {
   body?: string
 }
 
+function readTimeoutFromEnv(name: string, fallbackMs: number): number {
+  const raw = process.env[name]
+  if (raw == null || raw === '') return fallbackMs
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed < 0) return fallbackMs
+  return Math.floor(parsed)
+}
+
 export function registerApiProxyHandlers(): void {
   // Handle non-streaming API requests (e.g., test connection)
   ipcMain.handle('api:request', async (_event, req: Omit<APIStreamRequest, 'requestId'>) => {
@@ -91,8 +99,14 @@ export function registerApiProxyHandlers(): void {
       // Timeouts (ms):
       // - Connection: max wait for the server to start responding (first byte)
       // - Idle: max gap between consecutive data chunks during streaming
-      const CONNECTION_TIMEOUT = 60_000
-      const IDLE_TIMEOUT = 30_000
+      const CONNECTION_TIMEOUT = readTimeoutFromEnv(
+        'OPENCOWORK_API_CONNECTION_TIMEOUT_MS',
+        180_000
+      )
+      const IDLE_TIMEOUT = readTimeoutFromEnv(
+        'OPENCOWORK_API_IDLE_TIMEOUT_MS',
+        300_000
+      )
       let idleTimer: ReturnType<typeof setTimeout> | null = null
 
       const clearIdleTimer = (): void => {
@@ -100,6 +114,7 @@ export function registerApiProxyHandlers(): void {
       }
 
       const resetIdleTimer = (req: http.ClientRequest): void => {
+        if (IDLE_TIMEOUT <= 0) return
         clearIdleTimer()
         idleTimer = setTimeout(() => {
           console.warn(`[API Proxy] Idle timeout (${IDLE_TIMEOUT}ms) for ${requestId}`)
@@ -164,10 +179,12 @@ export function registerApiProxyHandlers(): void {
       })
 
       // Connection timeout: abort if the server doesn't respond at all
-      httpReq.setTimeout(CONNECTION_TIMEOUT, () => {
-        console.warn(`[API Proxy] Connection timeout (${CONNECTION_TIMEOUT}ms) for ${requestId}`)
-        httpReq.destroy(new Error(`Connection timeout (${CONNECTION_TIMEOUT / 1000}s)`))
-      })
+      if (CONNECTION_TIMEOUT > 0) {
+        httpReq.setTimeout(CONNECTION_TIMEOUT, () => {
+          console.warn(`[API Proxy] Connection timeout (${CONNECTION_TIMEOUT}ms) for ${requestId}`)
+          httpReq.destroy(new Error(`Connection timeout (${CONNECTION_TIMEOUT / 1000}s)`))
+        })
+      }
 
       httpReq.on('error', (err) => {
         clearIdleTimer()

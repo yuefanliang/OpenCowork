@@ -32,7 +32,27 @@
     "contextCompressionEnabled": "已启用：当上下文使用超过 90% 时自动压缩，原始任务和近期消息将被完整保留",
     "resetDefault": "重置为默认",
     "resetConfirm": "重置所有设置为默认？API Key将被保留。",
-    "resetDone": "已重置为默认设置"
+    "resetDone": "已重置为默认设置",
+    "data": {
+      "title": "数据管理",
+      "subtitle": "备份、导入或清理会话数据",
+      "backupTitle": "备份会话",
+      "backupDesc": "将所有对话导出为 JSON 备份文件。",
+      "backupAction": "导出 JSON",
+      "backupSuccess": "已备份 {{count}} 个会话",
+      "importTitle": "导入会话",
+      "importDesc": "从 JSON 备份文件恢复会话。",
+      "importAction": "导入 JSON",
+      "importSuccess": "成功导入 {{count}} 个新会话",
+      "importNone": "没有新的会话可以导入",
+      "importFailed": "导入失败：{{error}}",
+      "clearTitle": "清空全部数据",
+      "clearDesc": "删除所有会话与消息，且不可撤销。",
+      "clearAction": "删除所有会话",
+      "clearConfirm": "确定删除全部 {{count}} 个会话？该操作不可撤销。",
+      "cleared": "已删除 {{count}} 个会话",
+      "noSessions": "没有可用的会话"
+    }
   },
   "model": {
     "title": "模型配置",

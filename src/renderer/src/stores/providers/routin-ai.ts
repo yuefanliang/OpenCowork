@@ -5,6 +5,7 @@ export const routinAiPreset: BuiltinProviderPreset = {
   name: 'Routin AI',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.routin.ai/v1',
+  homepage: 'https://routin.ai',
   defaultEnabled: true,
   defaultModels: [
     // ── OpenAI — GPT-4o family (cache: 50% off input) ──

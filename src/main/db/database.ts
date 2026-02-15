@@ -66,6 +66,56 @@ export function getDb(): Database.Database {
   // Ensure plugin_id index exists
   db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_plugin ON sessions(plugin_id)`)
 
+  // Migration: add plan_id column to sessions if missing
+  try {
+    db.exec(`ALTER TABLE sessions ADD COLUMN plan_id TEXT`)
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // --- Plans table ---
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS plans (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'drafting',
+      file_path TEXT,
+      content TEXT,
+      spec_json TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_plans_session ON plans(session_id);
+  `)
+
+  // --- Tasks table (session-bound, persistent) ---
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tasks (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      plan_id TEXT,
+      subject TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      active_form TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      owner TEXT,
+      blocks TEXT DEFAULT '[]',
+      blocked_by TEXT DEFAULT '[]',
+      metadata TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_plan ON tasks(plan_id);
+  `)
+
   return db
 }
 

@@ -1,21 +1,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import Markdown from 'react-markdown'
+import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import typescript from 'react-syntax-highlighter/dist/esm/languages/prism/typescript'
-import javascript from 'react-syntax-highlighter/dist/esm/languages/prism/javascript'
-import python from 'react-syntax-highlighter/dist/esm/languages/prism/python'
-import bash from 'react-syntax-highlighter/dist/esm/languages/prism/bash'
-import json from 'react-syntax-highlighter/dist/esm/languages/prism/json'
-import css from 'react-syntax-highlighter/dist/esm/languages/prism/css'
-import jsx from 'react-syntax-highlighter/dist/esm/languages/prism/jsx'
-import tsx from 'react-syntax-highlighter/dist/esm/languages/prism/tsx'
-import markdown from 'react-syntax-highlighter/dist/esm/languages/prism/markdown'
-import yaml from 'react-syntax-highlighter/dist/esm/languages/prism/yaml'
-import rust from 'react-syntax-highlighter/dist/esm/languages/prism/rust'
-import go from 'react-syntax-highlighter/dist/esm/languages/prism/go'
 import { Avatar, AvatarFallback } from '@renderer/components/ui/avatar'
 import { useTypewriter } from '@renderer/hooks/use-typewriter'
 import { Copy, Check, ChevronsDownUp, ChevronsUpDown, Bug } from 'lucide-react'
@@ -34,34 +20,17 @@ import { SubAgentCard } from './SubAgentCard'
 import { TaskCard } from './TodoCard'
 import { ThinkingBlock } from './ThinkingBlock'
 import { TeamEventCard } from './TeamEventCard'
+import { AskUserQuestionCard } from './AskUserQuestionCard'
 import { TASK_TOOL_NAME } from '@renderer/lib/agent/sub-agents/create-tool'
 import { TEAM_TOOL_NAMES } from '@renderer/lib/agent/teams/register'
-import { useAgentStore } from '@renderer/stores/agent-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { ModelIcon } from '@renderer/components/settings/provider-icons'
 import { formatTokens, calculateCost, formatCost } from '@renderer/lib/format-tokens'
 import { useMemoizedTokens } from '@renderer/hooks/use-estimated-tokens'
 import { getLastDebugInfo } from '@renderer/lib/debug-store'
 import { MONO_FONT } from '@renderer/lib/constants'
-
-SyntaxHighlighter.registerLanguage('typescript', typescript)
-SyntaxHighlighter.registerLanguage('ts', typescript)
-SyntaxHighlighter.registerLanguage('javascript', javascript)
-SyntaxHighlighter.registerLanguage('js', javascript)
-SyntaxHighlighter.registerLanguage('python', python)
-SyntaxHighlighter.registerLanguage('bash', bash)
-SyntaxHighlighter.registerLanguage('sh', bash)
-SyntaxHighlighter.registerLanguage('shell', bash)
-SyntaxHighlighter.registerLanguage('json', json)
-SyntaxHighlighter.registerLanguage('css', css)
-SyntaxHighlighter.registerLanguage('jsx', jsx)
-SyntaxHighlighter.registerLanguage('tsx', tsx)
-SyntaxHighlighter.registerLanguage('markdown', markdown)
-SyntaxHighlighter.registerLanguage('md', markdown)
-SyntaxHighlighter.registerLanguage('yaml', yaml)
-SyntaxHighlighter.registerLanguage('yml', yaml)
-SyntaxHighlighter.registerLanguage('rust', rust)
-SyntaxHighlighter.registerLanguage('go', go)
+import type { ToolCallState } from '@renderer/lib/agent/types'
+import { LazySyntaxHighlighter } from './LazySyntaxHighlighter'
 
 interface AssistantMessageProps {
   content: string | ContentBlock[]
@@ -69,7 +38,16 @@ interface AssistantMessageProps {
   usage?: TokenUsage
   /** Map of toolUseId → output for completed tool results (from next user message) */
   toolResults?: Map<string, { content: ToolResultContent; isError?: boolean }>
+  /** Live tool-call states for the currently streaming assistant message */
+  liveToolCallMap?: Map<string, ToolCallState> | null
   msgId?: string
+}
+
+const MARKDOWN_WRAPPER_CLASS = 'text-sm leading-relaxed text-foreground break-words'
+const THINK_OPEN_TAG_RE = /<\s*think\s*>/i
+
+function stripThinkTagMarkers(text: string): string {
+  return text.replace(/<\s*\/?\s*think\s*>/gi, '')
 }
 
 function formatMs(ms: number): string {
@@ -149,9 +127,8 @@ function DebugToggleButton({ debugInfo }: { debugInfo: RequestDebugInfo }): Reac
                     </span>
                     <CopyButton text={bodyFormatted} />
                   </div>
-                  <SyntaxHighlighter
+                  <LazySyntaxHighlighter
                     language="json"
-                    style={oneDark}
                     customStyle={{
                       margin: 0,
                       padding: '12px 16px',
@@ -164,7 +141,7 @@ function DebugToggleButton({ debugInfo }: { debugInfo: RequestDebugInfo }): Reac
                     codeTagProps={{ style: { fontFamily: MONO_FONT } }}
                   >
                     {bodyFormatted}
-                  </SyntaxHighlighter>
+                  </LazySyntaxHighlighter>
                 </div>
               )}
             </div>
@@ -211,16 +188,16 @@ function CodeBlock({
         </span>
         <CopyButton text={code} />
       </div>
-      <SyntaxHighlighter
+      <LazySyntaxHighlighter
         language={language || 'text'}
-        style={oneDark}
         customStyle={{
           margin: 0,
           padding: '14px',
           fontSize: '12px',
           lineHeight: '1.5',
           background: 'transparent',
-          fontFamily: MONO_FONT
+          fontFamily: MONO_FONT,
+          whiteSpace: 'pre'
         }}
         codeTagProps={{
           style: {
@@ -231,47 +208,69 @@ function CodeBlock({
         className="!bg-[hsl(var(--muted))] text-xs"
       >
         {code}
-      </SyntaxHighlighter>
+      </LazySyntaxHighlighter>
     </div>
   )
 }
 
 function MarkdownContent({ text }: { text: string }): React.JSX.Element {
+  const components: Components = {
+    a: ({ href, children }) => (
+      <a
+        href={href}
+        onClick={(e) => {
+          e.preventDefault()
+          if (href) window.electron.ipcRenderer.invoke('shell:openExternal', href)
+        }}
+        className="text-primary underline underline-offset-2 hover:text-primary/80 cursor-pointer"
+        title={href}
+      >
+        {children}
+      </a>
+    ),
+    p: ({ children, ...props }) => (
+      <p className="my-1 first:mt-0 last:mb-0 leading-snug" {...props}>
+        {children}
+      </p>
+    ),
+    ul: ({ children, ...props }) => (
+      <ul className="my-1 last:mb-0 list-disc pl-4 space-y-0.5" {...props}>
+        {children}
+      </ul>
+    ),
+    ol: ({ children, ...props }) => (
+      <ol className="my-1 last:mb-0 list-decimal pl-4 space-y-0.5" {...props}>
+        {children}
+      </ol>
+    ),
+    li: ({ children, ...props }) => (
+      <li className="leading-snug [&>p]:m-0" {...props}>
+        {children}
+      </li>
+    ),
+    pre: ({ children }) => <>{children}</>,
+    code: ({ children, className, ...props }) => {
+      const match = /language-(\w+)/.exec(className || '')
+      const isInline = !match && !className
+      if (isInline) {
+        return (
+          <code
+            className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono"
+            style={{ fontFamily: MONO_FONT }}
+            {...props}
+          >
+            {children}
+          </code>
+        )
+      }
+      return <CodeBlock language={match?.[1]}>{String(children)}</CodeBlock>
+    }
+  }
+
   return (
     <Markdown
       remarkPlugins={[remarkGfm]}
-      components={{
-        a: ({ href, children }) => (
-          <a
-            href={href}
-            onClick={(e) => {
-              e.preventDefault()
-              if (href) window.electron.ipcRenderer.invoke('shell:openExternal', href)
-            }}
-            className="text-primary underline underline-offset-2 hover:text-primary/80 cursor-pointer"
-            title={href}
-          >
-            {children}
-          </a>
-        ),
-        pre: ({ children }) => <>{children}</>,
-        code: ({ children, className, ...props }) => {
-          const match = /language-(\w+)/.exec(className || '')
-          const isInline = !match && !className
-          if (isInline) {
-            return (
-              <code
-                className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono"
-                style={{ fontFamily: MONO_FONT }}
-                {...props}
-              >
-                {children}
-              </code>
-            )
-          }
-          return <CodeBlock language={match?.[1]}>{String(children)}</CodeBlock>
-        }
-      }}
+      components={components}
     >
       {text}
     </Markdown>
@@ -296,32 +295,37 @@ interface ThinkSegment {
 }
 
 function parseThinkTags(text: string): ThinkSegment[] {
-  if (!/<think>/.test(text)) return [{ type: 'text', content: text }]
+  if (!THINK_OPEN_TAG_RE.test(text)) {
+    return [{ type: 'text', content: stripThinkTagMarkers(text) }]
+  }
 
   const segments: ThinkSegment[] = []
-  const regex = /<think>([\s\S]*?)(<\/think>|$)/g
+  const regex = /<\s*think\s*>([\s\S]*?)(<\s*\/\s*think\s*>|$)/gi
   let lastIndex = 0
   let match: RegExpExecArray | null
 
   while ((match = regex.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      const before = text.slice(lastIndex, match.index)
+      const before = stripThinkTagMarkers(text.slice(lastIndex, match.index))
       if (before.trim()) segments.push({ type: 'text', content: before })
     }
-    segments.push({ type: 'think', content: match[1], closed: match[2] === '</think>' })
+    segments.push({ type: 'think', content: stripThinkTagMarkers(match[1]), closed: !!match[2] })
     lastIndex = regex.lastIndex
   }
 
   if (lastIndex < text.length) {
-    const remaining = text.slice(lastIndex)
+    const remaining = stripThinkTagMarkers(text.slice(lastIndex))
     if (remaining.trim()) segments.push({ type: 'text', content: remaining })
   }
 
-  return segments.length > 0 ? segments : [{ type: 'text', content: text }]
+  return segments.length > 0 ? segments : [{ type: 'text', content: stripThinkTagMarkers(text) }]
 }
 
 function stripThinkTags(text: string): string {
-  return text.replace(/<think>[\s\S]*?(<\/think>|$)/g, '').trim()
+  return text
+    .replace(/<\s*think\s*>[\s\S]*?(<\s*\/\s*think\s*>|$)/gi, '')
+    .replace(/<\s*\/?\s*think\s*>/gi, '')
+    .trim()
 }
 
 export function AssistantMessage({
@@ -329,6 +333,7 @@ export function AssistantMessage({
   isStreaming,
   usage,
   toolResults,
+  liveToolCallMap,
   msgId
 }: AssistantMessageProps): React.JSX.Element {
   const { t } = useTranslation('chat')
@@ -348,16 +353,7 @@ export function AssistantMessage({
   }, [content, usage, isStreaming])
   const fallbackTokens = useMemoizedTokens(plainTextForTokens)
 
-  // Subscribe to live tool call state for real-time status during streaming
-  const pendingToolCalls = useAgentStore((s) => s.pendingToolCalls)
-  const executedToolCalls = useAgentStore((s) => s.executedToolCalls)
-  const liveToolCallMap = useMemo(() => {
-    if (!isStreaming) return null
-    const map = new Map<string, (typeof executedToolCalls)[0]>()
-    for (const tc of executedToolCalls) map.set(tc.id, tc)
-    for (const tc of pendingToolCalls) map.set(tc.id, tc)
-    return map
-  }, [isStreaming, pendingToolCalls, executedToolCalls])
+  const effectiveLiveToolCallMap = isStreaming ? (liveToolCallMap ?? null) : null
 
   const renderContent = (): React.JSX.Element => {
     // Show thinking indicator when streaming just started
@@ -389,7 +385,7 @@ export function AssistantMessage({
 
       if (!hasThink) {
         return (
-          <div className="prose prose-sm dark:prose-invert max-w-none">
+          <div className={MARKDOWN_WRAPPER_CLASS}>
             <StreamingMarkdownContent text={content} isStreaming={!!isStreaming} />
             {isStreaming && (
               <span className="inline-block w-1.5 h-4 bg-primary/70 animate-pulse ml-0.5 rounded-sm" />
@@ -412,13 +408,13 @@ export function AssistantMessage({
               return (
                 <ThinkingBlock
                   key={idx}
-                  thinking={seg.content}
+                  thinking={stripThinkTagMarkers(seg.content)}
                   isStreaming={!!isStreaming && !seg.closed}
                 />
               )
             }
             return (
-              <div key={idx} className="prose prose-sm dark:prose-invert max-w-none">
+              <div key={idx} className={MARKDOWN_WRAPPER_CLASS}>
                 <StreamingMarkdownContent
                   text={seg.content}
                   isStreaming={!!isStreaming && idx === lastTextSegIdx}
@@ -439,7 +435,7 @@ export function AssistantMessage({
       : -1
 
     // Tools that have special renderers and should NOT be grouped
-    const SPECIAL_TOOLS = new Set(['TaskCreate', 'TaskUpdate', 'Write', 'Edit', 'MultiEdit', 'Delete'])
+    const SPECIAL_TOOLS = new Set(['TaskCreate', 'TaskUpdate', 'Write', 'Edit', 'MultiEdit', 'Delete', 'AskUserQuestion'])
 
     /** Check if a tool_use block should use the generic ToolCallCard (groupable) */
     const isGroupableTool = (name: string): boolean =>
@@ -486,6 +482,21 @@ export function AssistantMessage({
           </ScaleIn>
         )
       }
+      if (block.name === 'AskUserQuestion') {
+        const result = toolResults?.get(block.id)
+        const liveTc = effectiveLiveToolCallMap?.get(block.id)
+        return (
+          <ScaleIn key={key} className="w-full origin-left">
+            <AskUserQuestionCard
+              toolUseId={block.id}
+              input={block.input}
+              output={liveTc?.output ?? result?.content}
+              status={liveTc?.status ?? (result?.isError ? 'error' : 'completed')}
+              isLive={!!isStreaming}
+            />
+          </ScaleIn>
+        )
+      }
       if (TEAM_TOOL_NAMES.has(block.name)) {
         const result = toolResults?.get(block.id)
         return (
@@ -522,7 +533,7 @@ export function AssistantMessage({
       }
       if (['Write', 'Edit', 'MultiEdit', 'Delete'].includes(block.name)) {
         const result = toolResults?.get(block.id)
-        const liveTc = liveToolCallMap?.get(block.id)
+        const liveTc = effectiveLiveToolCallMap?.get(block.id)
         return (
           <ScaleIn key={key} className="w-full origin-left">
             <FileChangeCard
@@ -539,7 +550,7 @@ export function AssistantMessage({
       }
       // Generic ToolCallCard
       const result = toolResults?.get(block.id)
-      const liveTc = liveToolCallMap?.get(block.id)
+      const liveTc = effectiveLiveToolCallMap?.get(block.id)
       return (
         <ScaleIn key={key} className="w-full origin-left">
           <ToolCallCard
@@ -578,7 +589,7 @@ export function AssistantMessage({
                 return (
                   <ThinkingBlock
                     key={item.index}
-                    thinking={block.thinking}
+                    thinking={stripThinkTagMarkers(block.thinking)}
                     isStreaming={isStreaming}
                     startedAt={block.startedAt}
                     completedAt={block.completedAt}
@@ -589,7 +600,7 @@ export function AssistantMessage({
                 const hasThinkInBlock = textSegments.some((s) => s.type === 'think')
                 if (!hasThinkInBlock) {
                   return (
-                    <div key={item.index} className="prose prose-sm dark:prose-invert max-w-none">
+                    <div key={item.index} className={MARKDOWN_WRAPPER_CLASS}>
                       <StreamingMarkdownContent
                         text={block.text}
                         isStreaming={item.index === lastTextIdx}
@@ -609,13 +620,13 @@ export function AssistantMessage({
                         return (
                           <ThinkingBlock
                             key={j}
-                            thinking={seg.content}
+                            thinking={stripThinkTagMarkers(seg.content)}
                             isStreaming={isBlockStreaming && !seg.closed}
                           />
                         )
                       }
                       return (
-                        <div key={j} className="prose prose-sm dark:prose-invert max-w-none">
+                        <div key={j} className={MARKDOWN_WRAPPER_CLASS}>
                           <StreamingMarkdownContent
                             text={seg.content}
                             isStreaming={isBlockStreaming && j === lastTxtSeg}
@@ -644,7 +655,7 @@ export function AssistantMessage({
           if (groupBlocks.length === 1) {
             const block = groupBlocks[0]
             const result = toolResults?.get(block.id)
-            const liveTc = liveToolCallMap?.get(block.id)
+            const liveTc = effectiveLiveToolCallMap?.get(block.id)
             return (
               <ScaleIn key={block.id} className="w-full origin-left">
                 <ToolCallCard
@@ -663,7 +674,7 @@ export function AssistantMessage({
           // Multiple items — wrap in ToolCallGroup
           const groupItems = groupBlocks.map((block) => {
             const result = toolResults?.get(block.id)
-            const liveTc = liveToolCallMap?.get(block.id)
+            const liveTc = effectiveLiveToolCallMap?.get(block.id)
             return {
               id: block.id,
               name: block.name,
@@ -683,7 +694,7 @@ export function AssistantMessage({
               <ToolCallGroup toolName={item.toolName} items={groupItems}>
                 {groupBlocks.map((block) => {
                   const result = toolResults?.get(block.id)
-                  const liveTc = liveToolCallMap?.get(block.id)
+                  const liveTc = effectiveLiveToolCallMap?.get(block.id)
                   return (
                     <ToolCallCard
                       key={block.id}
@@ -711,9 +722,9 @@ export function AssistantMessage({
       ? stripThinkTags(content)
       : Array.isArray(content)
         ? content
-            .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
-            .map((b) => stripThinkTags(b.text))
-            .join('\n')
+          .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
+          .map((b) => stripThinkTags(b.text))
+          .join('\n')
         : ''
 
   const timingSummary = useMemo(() => {
@@ -767,9 +778,9 @@ export function AssistantMessage({
       <div className="min-w-0 flex-1 pt-0.5 overflow-hidden">
         <div className="flex items-center gap-2 mb-1">
           <p className="text-sm font-medium">{modelDisplayName}</p>
-          {!isStreaming && plainText && (
+          {!isStreaming && (
             <span className="opacity-0 group-hover/msg:opacity-100 transition-opacity flex items-center gap-0.5">
-              <CopyButton text={plainText} />
+              {plainText && <CopyButton text={plainText} />}
               {devMode && debugInfo && <DebugToggleButton debugInfo={debugInfo} />}
             </span>
           )}
@@ -779,26 +790,26 @@ export function AssistantMessage({
           <p className="mt-1 text-[10px] text-muted-foreground/40 tabular-nums">
             {usage
               ? (() => {
-                  const u = usage!
-                  const total = u.inputTokens + u.outputTokens
-                  const modelCfg = useProviderStore.getState().getActiveModelConfig()
-                  const cost = calculateCost(u, modelCfg)
-                  return (
-                    <>
-                      {`${formatTokens(total)} ${t('unit.tokens', { ns: 'common' })} (${formatTokens(u.inputTokens)}↓ ${formatTokens(u.outputTokens)}↑`}
-                      {u.cacheReadTokens
-                        ? ` · ${formatTokens(u.cacheReadTokens)} ${t('unit.cached', { ns: 'common' })}`
-                        : ''}
-                      {u.reasoningTokens
-                        ? ` · ${formatTokens(u.reasoningTokens)} ${t('unit.reasoning', { ns: 'common' })}`
-                        : ''}
-                      {')'}
-                      {cost !== null && (
-                        <span className="text-emerald-500/70"> · {formatCost(cost)}</span>
-                      )}
-                    </>
-                  )
-                })()
+                const u = usage!
+                const total = u.inputTokens + u.outputTokens
+                const modelCfg = useProviderStore.getState().getActiveModelConfig()
+                const cost = calculateCost(u, modelCfg)
+                return (
+                  <>
+                    {`${formatTokens(total)} ${t('unit.tokens', { ns: 'common' })} (${formatTokens(u.inputTokens)}↓ ${formatTokens(u.outputTokens)}↑`}
+                    {u.cacheReadTokens
+                      ? ` · ${formatTokens(u.cacheReadTokens)} ${t('unit.cached', { ns: 'common' })}`
+                      : ''}
+                    {u.reasoningTokens
+                      ? ` · ${formatTokens(u.reasoningTokens)} ${t('unit.reasoning', { ns: 'common' })}`
+                      : ''}
+                    {')'}
+                    {cost !== null && (
+                      <span className="text-emerald-500/70"> · {formatCost(cost)}</span>
+                    )}
+                  </>
+                )
+              })()
               : `~${formatTokens(fallbackTokens)} ${t('unit.tokens', { ns: 'common' })}`}
           </p>
         )}

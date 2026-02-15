@@ -5,6 +5,7 @@ export const moonshotPreset: BuiltinProviderPreset = {
   name: 'Moonshot',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.moonshot.cn/v1',
+  homepage: 'https://platform.moonshot.cn',
   defaultModels: [
     // Kimi K2.5 (latest, Jan 2026)
     { id: 'kimi-k2.5', name: 'Kimi K2.5', icon: 'kimi', enabled: true, contextLength: 131_072, maxOutputTokens: 8_192, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.6, outputPrice: 3 },

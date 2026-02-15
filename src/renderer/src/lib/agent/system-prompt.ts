@@ -11,8 +11,9 @@ export function buildSystemPrompt(options: {
   userSystemPrompt?: string
   toolDefs?: import('../api/types').ToolDefinition[]
   language?: string
+  planMode?: boolean
 }): string {
-  const { mode, workingFolder, userSystemPrompt, language } = options
+  const { mode, workingFolder, userSystemPrompt, language, planMode } = options
 
   const toolDefs = options.toolDefs ?? toolRegistry.getDefinitions()
   const toolList = toolDefs.map((t) => `- **${t.name}**: ${t.description}`).join('\n')
@@ -70,6 +71,7 @@ export function buildSystemPrompt(options: {
     `- You are rigorous and make absolutely no ungrounded assertions. When uncertain, use tools to gather more info, and clearly state your uncertainty if there's no way to get unstuck.`,
     `- Never start with acknowledgment phrases like "You're absolutely right!", "Great idea!", "I agree", "Good point", "That makes sense", etc. Jump straight into substantive content without preamble.`,
     `- By default, implement changes rather than only suggesting them. If the user's intent is unclear, infer the most useful action and proceed, using tools to discover missing details instead of guessing.`,
+    `- **When requirements are unclear, ambiguous, or multiple valid approaches exist, use AskUserQuestion to ask the user BEFORE making assumptions.** Do not guess on important decisions — always confirm with the user when in doubt about direction, scope, or trade-offs.`,
     `- Code style: Do not add or delete ***ANY*** comments or documentation unless asked.`,
     `- Always end a conversation with a clear and concise summary of the task completion status.`,
     `</communication_guidelines>`,
@@ -96,6 +98,37 @@ export function buildSystemPrompt(options: {
       `Focus on writing clean, well-structured code.`,
       `You have access to the filesystem and can create or modify files.`,
       `Prefer editing existing files over rewriting them entirely.`
+    )
+  }
+
+  // ── Plan Mode Override ──
+  if (planMode) {
+    parts.push(
+      `\n## Mode: Plan (ACTIVE)`,
+      `**You are currently in Plan Mode.** Your goal is to thoroughly explore the codebase, deeply understand the requirements, and produce a **detailed technical implementation plan** — not a brief outline.`,
+      `\n**RULES:**`,
+      `- You MUST NOT modify existing files — Edit/Shell tools are disabled.`,
+      `- Use Read/Glob/Grep/Task(CodeSearch) to understand the codebase BEFORE writing the plan. Read key files, understand existing patterns, types, and architecture.`,
+      `- **When requirements are unclear, ambiguous, or multiple valid approaches exist, you MUST use AskUserQuestion to ask the user BEFORE making assumptions.** Do not guess — always confirm with the user when in doubt.`,
+      `- Use the **Write** tool to create the plan as a Markdown file in the \`.plan/\` directory. The file name is derived from the plan title. The plan is displayed in real-time in the Plan panel.`,
+      `- Use ExitPlanMode when the plan is complete and ready for user review.`,
+      `- **After calling ExitPlanMode, you MUST STOP immediately and wait for the user to review the plan.** Do NOT continue with any further actions. The user will click "Implement" or reply when ready.`,
+      `\n**Plan Quality Requirements (CRITICAL):**`,
+      `The plan must be a **comprehensive technical design document** (typically 1000+ words) that another developer could follow without ambiguity. Include:`,
+      `1. **Summary** — Problem statement, proposed solution approach, and expected outcome`,
+      `2. **Requirements** — Numbered list with specific acceptance criteria for each item`,
+      `3. **Technical Constraints** — Compatibility, performance targets, dependency restrictions`,
+      `4. **Architecture & Design** — Component relationships, data flow (ASCII diagrams welcome), state management strategy, key TypeScript interfaces/types with full signatures`,
+      `5. **Implementation Steps** — For EACH step provide:`,
+      `   - Exact file paths to create or modify`,
+      `   - Function/class/type names with signatures`,
+      `   - Detailed logic description (algorithms, data transformations, error handling)`,
+      `   - Code snippets or pseudocode for complex parts`,
+      `   - Dependencies on other steps`,
+      `6. **Testing Strategy** — Specific test cases, edge cases to cover, verification commands`,
+      `7. **Risk & Mitigation** — Potential issues and fallback approaches`,
+      `\n**DO NOT** write a vague or superficial plan. Each implementation step must contain enough detail that it can be directly translated into code.`,
+      `After writing the plan file, call ExitPlanMode to finalize it. The user can then click "Implement" to begin.`
     )
   }
 
@@ -138,6 +171,19 @@ export function buildSystemPrompt(options: {
   parts.push(
     `\n<task_management>`,
     `You have access to the **TaskCreate**, **TaskGet**, **TaskUpdate**, and **TaskList** tools to manage a structured task list for your current session.`,
+    `\n### CRITICAL: Task Creation Discipline`,
+    `**ALWAYS create tasks BEFORE starting work on complex requests.** This is mandatory for maintaining focus and allowing the user to track progress.`,
+    `\n**Complex tasks include:**`,
+    `- Tasks requiring **3 or more distinct steps** or actions`,
+    `- Tasks involving **multiple files** or components`,
+    `- Tasks requiring **careful planning** or coordination`,
+    `- Tasks with **dependencies** or sequential requirements`,
+    `\n**Workflow for complex requests:**`,
+    `1. **Check context**: If you receive a \`<system-remind>\` block in the user's first message, it contains current task status. If tasks already exist, continue with them instead of creating new ones.`,
+    `2. **Create tasks if needed**: If no existing tasks and the request is complex, analyze and break it into tasks using TaskCreate FIRST.`,
+    `3. **Execute**: Start executing tasks one by one, marking each as \`in_progress\` before beginning.`,
+    `4. **Complete**: Mark tasks as \`completed\` only when fully accomplished.`,
+    `\n**This ensures you maintain focus and the user can track your progress in real-time.**`,
     `\n### When to Use Task Tools`,
     `Use these tools proactively in these scenarios:`,
     `- **Complex multi-step tasks** — When a task requires 3 or more distinct steps or actions`,

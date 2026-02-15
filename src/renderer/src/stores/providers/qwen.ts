@@ -5,6 +5,7 @@ export const qwenPreset: BuiltinProviderPreset = {
   name: '通义千问',
   type: 'openai-chat',
   defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  homepage: 'https://dashscope.aliyun.com',
   defaultModels: [
     // Qwen3 series (tiered pricing, base tier ≤32K/≤256K shown)
     { id: 'qwen3-max', name: 'Qwen3 Max', icon: 'qwen', enabled: true, contextLength: 262_144, maxOutputTokens: 32_768, supportsVision: false, supportsFunctionCall: true, inputPrice: 1.2, outputPrice: 6, supportsThinking: true, thinkingConfig: { bodyParams: { enable_thinking: true } } },

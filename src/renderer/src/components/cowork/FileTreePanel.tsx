@@ -17,7 +17,6 @@ import {
   Copy,
   Check,
   AlertCircle,
-  X,
   Pencil,
   Trash2,
 } from 'lucide-react'
@@ -33,9 +32,6 @@ import { useChatStore } from '@renderer/stores/chat-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { cn } from '@renderer/lib/utils'
-import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { MONO_FONT } from '@renderer/lib/constants'
 import { AnimatePresence, motion } from 'motion/react'
 
 // --- Types ---
@@ -95,28 +91,6 @@ function sortEntries(entries: FileEntry[]): FileEntry[] {
 }
 
 // --- Tree Node Component ---
-
-const LANG_MAP: Record<string, string> = {
-  ts: 'typescript', tsx: 'tsx', js: 'javascript', jsx: 'jsx',
-  py: 'python', rs: 'rust', go: 'go', json: 'json',
-  css: 'css', scss: 'scss', less: 'less',
-  html: 'html', htm: 'html', xml: 'xml', svg: 'xml',
-  md: 'markdown', mdx: 'markdown',
-  yaml: 'yaml', yml: 'yaml', toml: 'toml',
-  sh: 'bash', bash: 'bash', zsh: 'bash',
-  sql: 'sql', graphql: 'graphql', gql: 'graphql',
-  c: 'c', h: 'c', cpp: 'cpp', cxx: 'cpp', cc: 'cpp', hpp: 'cpp',
-  java: 'java', kt: 'kotlin', kts: 'kotlin',
-  rb: 'ruby', php: 'php', swift: 'swift',
-  dockerfile: 'docker', makefile: 'makefile',
-  r: 'r', lua: 'lua', dart: 'dart',
-  ini: 'ini', env: 'bash', conf: 'ini',
-}
-
-function detectLang(name: string): string {
-  const ext = name.includes('.') ? name.split('.').pop()?.toLowerCase() ?? '' : ''
-  return LANG_MAP[ext] ?? 'text'
-}
 
 // --- Inline input for rename / new item ---
 
@@ -374,8 +348,6 @@ export function FileTreePanel(): React.JSX.Element {
   const [tree, setTree] = useState<TreeNode[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [preview, setPreview] = useState<{ path: string; name: string; content: string } | null>(null)
-  const [previewLoading, setPreviewLoading] = useState(false)
 
   // --- Edit state for context menu actions ---
   const [renamingPath, setRenamingPath] = useState<string | null>(null)
@@ -584,26 +556,10 @@ export function FileTreePanel(): React.JSX.Element {
     onNewItemCancel: handleNewItemCancel,
   }
 
-  const handlePreview = useCallback(async (filePath: string, name: string) => {
-    // If same file, toggle off
-    if (preview?.path === filePath) { setPreview(null); return }
-    setPreviewLoading(true)
-    try {
-      const raw = await ipcClient.invoke('fs:read-file', { path: filePath }) as string
-      if (typeof raw === 'string' && !raw.startsWith('{"error"')) {
-        // Truncate to first 80 lines for preview
-        const lines = raw.split('\n')
-        const content = lines.length > 80 ? lines.slice(0, 80).join('\n') + '\n…' : raw
-        setPreview({ path: filePath, name, content })
-      } else {
-        setPreview({ path: filePath, name, content: t('fileTree.unableToRead') })
-      }
-    } catch {
-      setPreview({ path: filePath, name, content: t('fileTree.unableToRead') })
-    } finally {
-      setPreviewLoading(false)
-    }
-  }, [preview])
+  const handlePreview = useCallback((filePath: string, _name: string) => {
+    // Open file in unified preview panel
+    useUIStore.getState().openFilePreview(filePath)
+  }, [])
 
   if (!workingFolder) {
     return (
@@ -664,59 +620,8 @@ export function FileTreePanel(): React.JSX.Element {
         </div>
       )}
 
-      {/* File Preview */}
-      {(preview || previewLoading) && (
-        <div className="border-t pt-2 mt-2 space-y-1">
-          {preview && (
-            <div className="flex items-center gap-1.5">
-              {fileIcon(preview.name)}
-              <span className="text-[11px] text-muted-foreground truncate flex-1" title={preview.path}>
-                {preview.name}
-              </span>
-              <button
-                className="text-muted-foreground/30 hover:text-muted-foreground transition-colors"
-                onClick={() => { handleCopyPath(preview.path) }}
-                title={t('fileTree.insertPath')}
-              >
-                <Copy className="size-3" />
-              </button>
-              <button
-                className="text-muted-foreground/30 hover:text-muted-foreground transition-colors"
-                onClick={() => setPreview(null)}
-                title={t('fileTree.closePreview')}
-              >
-                <X className="size-3" />
-              </button>
-            </div>
-          )}
-          {previewLoading ? (
-            <div className="flex items-center justify-center py-4">
-              <RefreshCw className="size-3 animate-spin text-muted-foreground" />
-            </div>
-          ) : preview ? (
-            <SyntaxHighlighter
-              language={detectLang(preview.name)}
-              style={oneDark}
-              showLineNumbers
-              customStyle={{
-                margin: 0,
-                padding: '0.4rem',
-                borderRadius: '0.375rem',
-                fontSize: '10px',
-                maxHeight: '250px',
-                overflow: 'auto',
-                fontFamily: MONO_FONT
-              }}
-              codeTagProps={{ style: { fontFamily: 'inherit' } }}
-            >
-              {preview.content}
-            </SyntaxHighlighter>
-          ) : null}
-        </div>
-      )}
-
       {/* Stats */}
-      {tree.length > 0 && !preview && (
+      {tree.length > 0 && (
         <div className="text-[9px] text-muted-foreground/30 px-1">
           {t('fileTree.stats', { folders: tree.filter((n) => n.type === 'directory').length, files: tree.filter((n) => n.type === 'file').length })}
         </div>

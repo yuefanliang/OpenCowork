@@ -18,7 +18,7 @@ import { PermissionDialog } from '@renderer/components/cowork/PermissionDialog'
 import { CommandPalette } from './CommandPalette'
 import { ErrorBoundary } from '@renderer/components/error-boundary'
 import { useUIStore } from '@renderer/stores/ui-store'
-import { useChatStore } from '@renderer/stores/chat-store'
+import { useChatStore, type SessionMode } from '@renderer/stores/chat-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useChatActions } from '@renderer/hooks/use-chat-actions'
@@ -27,6 +27,7 @@ import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { sessionToMarkdown } from '@renderer/lib/utils/export-chat'
 import { AnimatePresence, motion } from 'motion/react'
 import { PageTransition, PanelTransition } from '@renderer/components/animate-ui'
+import { useShallow } from 'zustand/react/shallow'
 
 export function Layout(): React.JSX.Element {
   const { t } = useTranslation('layout')
@@ -36,14 +37,23 @@ export function Layout(): React.JSX.Element {
   const rightPanelOpen = useUIStore((s) => s.rightPanelOpen)
   const detailPanelOpen = useUIStore((s) => s.detailPanelOpen)
   const previewPanelOpen = useUIStore((s) => s.previewPanelOpen)
-  const sessions = useChatStore((s) => s.sessions)
+  const activeSessionView = useChatStore(
+    useShallow((s) => {
+      const activeSession = s.sessions.find((session) => session.id === s.activeSessionId)
+      return {
+        activeSessionTitle: activeSession?.title,
+        activeSessionMode: activeSession?.mode as SessionMode | undefined,
+        activeWorkingFolder: activeSession?.workingFolder,
+      }
+    })
+  )
+  const { activeSessionTitle, activeSessionMode, activeWorkingFolder } = activeSessionView
   const activeSessionId = useChatStore((s) => s.activeSessionId)
   const streamingMessageId = useChatStore((s) => s.streamingMessageId)
   const pendingToolCalls = useAgentStore((s) => s.pendingToolCalls)
   const resolveApproval = useAgentStore((s) => s.resolveApproval)
 
   const { resolvedTheme, setTheme: ntSetTheme } = useTheme()
-  const activeSession = sessions.find((s) => s.id === activeSessionId)
   const { sendMessage, stopStreaming, retryLastMessage, editAndResend } = useChatActions()
 
   const activeSubAgents = useAgentStore((s) => s.activeSubAgents)
@@ -51,8 +61,8 @@ export function Layout(): React.JSX.Element {
 
   // Update window title (show pending approvals + streaming state + SubAgent)
   useEffect(() => {
-    const base = activeSession?.title
-      ? `${activeSession.title} — OpenCowork`
+    const base = activeSessionTitle
+      ? `${activeSessionTitle} — OpenCowork`
       : 'OpenCowork'
     const prefix = pendingToolCalls.length > 0
       ? `(${pendingToolCalls.length} pending) `
@@ -62,14 +72,14 @@ export function Layout(): React.JSX.Element {
           ? '⏳ '
           : ''
     document.title = `${prefix}${base}`
-  }, [activeSession?.title, pendingToolCalls.length, streamingMessageId, runningSubAgents])
+  }, [activeSessionTitle, pendingToolCalls.length, streamingMessageId, runningSubAgents])
 
   // Sync UI mode when switching to a session with a different mode
   useEffect(() => {
-    if (activeSession && activeSession.mode !== mode) {
-      useUIStore.getState().setMode(activeSession.mode)
+    if (activeSessionMode && activeSessionMode !== mode) {
+      useUIStore.getState().setMode(activeSessionMode)
     }
-  }, [activeSessionId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeSessionId, activeSessionMode, mode])
 
   const pendingApproval = pendingToolCalls[0] ?? null
   const createSession = useChatStore((s) => s.createSession)
@@ -121,12 +131,12 @@ export function Layout(): React.JSX.Element {
         e.preventDefault()
         if (activeSessionId) {
           const session = useChatStore.getState().sessions.find((s) => s.id === activeSessionId)
-          if (session && session.messages.length > 0) {
-            const ok = await confirm({ title: t('layout.clearConfirm', { count: session.messages.length }), variant: 'destructive' })
+          if (session && session.messageCount > 0) {
+            const ok = await confirm({ title: t('layout.clearConfirm', { count: session.messageCount }), variant: 'destructive' })
             if (!ok) return
           }
           useChatStore.getState().clearSessionMessages(activeSessionId)
-          if (session && session.messages.length > 0) toast.success(t('layout.conversationCleared'))
+          if (session && session.messageCount > 0) toast.success(t('layout.conversationCleared'))
         }
       }
       // Ctrl+D: Duplicate current session
@@ -181,8 +191,11 @@ export function Layout(): React.JSX.Element {
       // Ctrl+Shift+C: Copy conversation as markdown
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'C' || e.key === 'c')) {
         e.preventDefault()
+        if (activeSessionId) {
+          await useChatStore.getState().loadSessionMessages(activeSessionId)
+        }
         const session = useChatStore.getState().sessions.find((s) => s.id === activeSessionId)
-        if (session && session.messages.length > 0) {
+        if (session && session.messageCount > 0) {
           navigator.clipboard.writeText(sessionToMarkdown(session))
           toast.success(t('layout.conversationCopied'))
         }
@@ -217,7 +230,7 @@ export function Layout(): React.JSX.Element {
         e.preventDefault()
         const ui = useUIStore.getState()
         if (!ui.rightPanelOpen) { ui.setRightPanelOpen(true); return }
-        const tabs: Array<'steps' | 'team' | 'files' | 'artifacts' | 'context' | 'skills'> = ['steps', 'team', 'files', 'artifacts', 'context', 'skills']
+        const tabs: Array<'steps' | 'plan' | 'team' | 'files' | 'artifacts' | 'context' | 'skills'> = ['steps', 'plan', 'team', 'files', 'artifacts', 'context', 'skills']
         const idx = tabs.indexOf(ui.rightPanelTab)
         ui.setRightPanelTab(tabs[(idx + 1) % tabs.length])
         return
@@ -273,7 +286,9 @@ export function Layout(): React.JSX.Element {
         e.preventDefault()
         const allSessions = useChatStore.getState().sessions
         if (allSessions.length === 0) { toast.error(t('layout.noSessionsToBackup')); return }
-        const json = JSON.stringify(allSessions, null, 2)
+        await Promise.all(allSessions.map((s) => useChatStore.getState().loadSessionMessages(s.id)))
+        const latestSessions = useChatStore.getState().sessions
+        const json = JSON.stringify(latestSessions, null, 2)
         const blob = new Blob([json], { type: 'application/json' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
@@ -281,14 +296,17 @@ export function Layout(): React.JSX.Element {
         a.download = `opencowork-backup-${new Date().toISOString().slice(0, 10)}.json`
         a.click()
         URL.revokeObjectURL(url)
-        toast.success(t('layout.backedUpSessions', { count: allSessions.length }))
+        toast.success(t('layout.backedUpSessions', { count: latestSessions.length }))
         return
       }
       // Ctrl+Shift+E: Export current conversation
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'E') {
         e.preventDefault()
+        if (activeSessionId) {
+          await useChatStore.getState().loadSessionMessages(activeSessionId)
+        }
         const session = useChatStore.getState().sessions.find((s) => s.id === activeSessionId)
-        if (session && session.messages.length > 0) {
+        if (session && session.messageCount > 0) {
           const md = sessionToMarkdown(session)
           const filename = session.title.replace(/[^a-zA-Z0-9-_ ]/g, '').slice(0, 50).trim() || 'conversation'
           const blob = new Blob([md], { type: 'text/markdown' })
@@ -385,7 +403,7 @@ export function Layout(): React.JSX.Element {
                         onSend={sendMessage}
                         onStop={stopStreaming}
                         onSelectFolder={mode !== 'chat' ? handleSelectFolder : undefined}
-                        workingFolder={activeSession?.workingFolder}
+                        workingFolder={activeWorkingFolder}
                         isStreaming={!!streamingMessageId}
                       />
                     </motion.div>

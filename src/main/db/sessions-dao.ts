@@ -10,11 +10,20 @@ export interface SessionRow {
   working_folder: string | null
   pinned: number
   plugin_id: string | null
+  message_count?: number
 }
 
 export function listSessions(): SessionRow[] {
   const db = getDb()
-  return db.prepare('SELECT * FROM sessions WHERE plugin_id IS NULL ORDER BY updated_at DESC').all() as SessionRow[]
+  return db
+    .prepare(
+      `SELECT s.*,
+              (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) AS message_count
+         FROM sessions s
+        WHERE s.plugin_id IS NULL
+        ORDER BY s.updated_at DESC`
+    )
+    .all() as SessionRow[]
 }
 
 export function getSession(id: string): SessionRow | undefined {

@@ -1,4 +1,4 @@
-import { ListChecks, FileOutput, Database, Sparkles, FolderTree, Users } from 'lucide-react'
+import { ListChecks, FileOutput, Database, Sparkles, FolderTree, Users, ClipboardList } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { Separator } from '@renderer/components/ui/separator'
 import { useUIStore, type RightPanelTab } from '@renderer/stores/ui-store'
@@ -10,6 +10,9 @@ import { ContextPanel } from '@renderer/components/cowork/ContextPanel'
 import { SkillsPanel } from '@renderer/components/cowork/SkillsPanel'
 import { FileTreePanel } from '@renderer/components/cowork/FileTreePanel'
 import { TeamPanel } from '@renderer/components/cowork/TeamPanel'
+import { PlanPanel } from '@renderer/components/cowork/PlanPanel'
+import { usePlanStore } from '@renderer/stores/plan-store'
+import { useChatStore } from '@renderer/stores/chat-store'
 import { useTeamStore } from '@renderer/stores/team-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useTranslation } from 'react-i18next'
@@ -21,6 +24,7 @@ const ALL_FILE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'Delete'])
 
 const tabDefs: { value: RightPanelTab; labelKey: string; icon: React.ReactNode }[] = [
   { value: 'steps', labelKey: 'steps', icon: <ListChecks className="size-4" /> },
+  { value: 'plan', labelKey: 'plan', icon: <ClipboardList className="size-4" /> },
   { value: 'team', labelKey: 'team', icon: <Users className="size-4" /> },
   { value: 'files', labelKey: 'files', icon: <FolderTree className="size-4" /> },
   { value: 'artifacts', labelKey: 'artifacts', icon: <FileOutput className="size-4" /> },
@@ -37,10 +41,20 @@ export function RightPanel({ compact = false }: { compact?: boolean }): React.JS
   const activeTeam = useTeamStore((s) => s.activeTeam)
   const teamToolsEnabled = useSettingsStore((s) => s.teamToolsEnabled)
 
-  const visibleTabs = teamToolsEnabled ? tabDefs : tabDefs.filter((t) => t.value !== 'team')
+  const activeSessionId = useChatStore((s) => s.activeSessionId)
+  const hasPlan = usePlanStore((s) => {
+    if (!activeSessionId) return false
+    return Object.values(s.plans).some((p) => p.sessionId === activeSessionId)
+  })
+  const planMode = useUIStore((s) => s.planMode)
+
+  const visibleTabs = tabDefs
+    .filter((t) => teamToolsEnabled || t.value !== 'team')
+    .filter((t) => (hasPlan || planMode) || t.value !== 'plan')
 
   const badgeCounts: Partial<Record<RightPanelTab, number>> = {
     steps: todos.length,
+    plan: hasPlan ? 1 : 0,
     team: activeTeam ? activeTeam.members.length : 0,
     artifacts: executedToolCalls.filter((tc) => ALL_FILE_TOOLS.has(tc.name)).length,
   }
@@ -113,6 +127,12 @@ export function RightPanel({ compact = false }: { compact?: boolean }): React.JS
           {tab === 'skills' && (
             <FadeIn key="skills" className="h-full">
               <SkillsPanel />
+            </FadeIn>
+          )}
+
+          {tab === 'plan' && (
+            <FadeIn key="plan" className="h-full">
+              <PlanPanel />
             </FadeIn>
           )}
         </AnimatePresence>

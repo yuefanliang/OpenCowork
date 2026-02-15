@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import type { UnifiedMessage, ToolResultContent, ImageBlock } from '@renderer/lib/api/types'
+import * as React from 'react'
+import type { UnifiedMessage, ToolResultContent } from '@renderer/lib/api/types'
+import type { ToolCallState } from '@renderer/lib/agent/types'
 import { UserMessage } from './UserMessage'
 import { AssistantMessage } from './AssistantMessage'
 import { Users, ChevronDown } from 'lucide-react'
@@ -13,6 +14,7 @@ interface MessageItemProps {
   isLastUserMessage?: boolean
   onEditUserMessage?: (newContent: string) => void
   toolResults?: Map<string, { content: ToolResultContent; isError?: boolean }>
+  liveToolCallMap?: Map<string, ToolCallState> | null
 }
 
 function formatTime(ts: number): string {
@@ -21,7 +23,7 @@ function formatTime(ts: number): string {
 
 /** Render a teammate notification as a collapsible bar with smooth transition */
 function TeamNotification({ content }: { content: string }): React.JSX.Element {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = React.useState(false)
 
   // Extract the teammate name from the prefix "[Team message from X]:"
   const match = content.match(/^\[Team message from (.+?)\]:\n?/)
@@ -58,39 +60,42 @@ function TeamNotification({ content }: { content: string }): React.JSX.Element {
   )
 }
 
-export function MessageItem({ message, isStreaming, isLastUserMessage, onEditUserMessage, toolResults }: MessageItemProps): React.JSX.Element | null {
+function MessageItemInner({
+  message,
+  isStreaming,
+  isLastUserMessage,
+  onEditUserMessage,
+  toolResults,
+  liveToolCallMap
+}: MessageItemProps): React.JSX.Element | null {
   const inner = (() => {
     switch (message.role) {
       case 'user': {
-        // Team notification messages render as a distinct card, not a user bubble
+        // Team notification messages (source: 'team') are rendered differently
         if (message.source === 'team') {
-          const text = typeof message.content === 'string'
-            ? message.content
-            : message.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n')
-          return <TeamNotification content={text} />
+          return <TeamNotification content={typeof message.content === 'string' ? message.content : JSON.stringify(message.content)} />
         }
-        // Extract user text and images from complex content (ignore tool_result blocks)
-        let userText: string
-        let userImages: ImageBlock[] = []
-        if (typeof message.content === 'string') {
-          userText = message.content
-        } else {
-          const textBlocks = message.content.filter((b) => b.type === 'text')
-          userText = textBlocks.length > 0 ? textBlocks.map((b) => b.text).join('\n') : ''
-          userImages = message.content.filter((b): b is ImageBlock => b.type === 'image')
-        }
-        if (!userText && userImages.length === 0) return null
+        // Regular user message - pass content directly to UserMessage component
+        // UserMessage will handle ContentBlock[] extraction and system-remind filtering
         return (
           <UserMessage
-            content={userText}
-            images={userImages}
+            content={message.content}
             isLast={isLastUserMessage}
             onEdit={onEditUserMessage}
           />
         )
       }
       case 'assistant':
-        return <AssistantMessage content={message.content} isStreaming={isStreaming} usage={message.usage} toolResults={toolResults} msgId={message.id} />
+        return (
+          <AssistantMessage
+            content={message.content}
+            isStreaming={isStreaming}
+            usage={message.usage}
+            toolResults={toolResults}
+            liveToolCallMap={liveToolCallMap}
+            msgId={message.id}
+          />
+        )
       default:
         return null
     }
@@ -107,3 +112,34 @@ export function MessageItem({ message, isStreaming, isLastUserMessage, onEditUse
     </SlideIn>
   )
 }
+
+function areToolResultsEqual(
+  a?: Map<string, { content: ToolResultContent; isError?: boolean }>,
+  b?: Map<string, { content: ToolResultContent; isError?: boolean }>
+): boolean {
+  if (a === b) return true
+  if (!a || !b) return !a && !b
+  if (a.size !== b.size) return false
+
+  for (const [id, value] of a) {
+    const other = b.get(id)
+    if (!other) return false
+    if (other.isError !== value.isError) return false
+    if (other.content !== value.content) return false
+  }
+
+  return true
+}
+
+function areEqual(prev: MessageItemProps, next: MessageItemProps): boolean {
+  return (
+    prev.message === next.message &&
+    prev.isStreaming === next.isStreaming &&
+    prev.isLastUserMessage === next.isLastUserMessage &&
+    prev.onEditUserMessage === next.onEditUserMessage &&
+    prev.liveToolCallMap === next.liveToolCallMap &&
+    areToolResultsEqual(prev.toolResults, next.toolResults)
+  )
+}
+
+export const MessageItem = React.memo(MessageItemInner, areEqual)

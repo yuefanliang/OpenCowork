@@ -5,6 +5,7 @@ export const googlePreset: BuiltinProviderPreset = {
   name: 'Google Gemini',
   type: 'openai-chat',
   defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  homepage: 'https://ai.google.dev',
   defaultModels: [
     // Gemini 3 (preview)
     { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview', icon: 'gemini', enabled: true, contextLength: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsFunctionCall: true, inputPrice: 2, outputPrice: 12 },

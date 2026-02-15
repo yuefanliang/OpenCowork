@@ -5,6 +5,7 @@ export const xiaomiPreset: BuiltinProviderPreset = {
   name: '小米',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.xiaomimimo.com/v1',
+  homepage: 'https://platform.xiaomimimo.com/',
   defaultModels: [
     {
       id: 'mimo-v2-flash',

@@ -98,6 +98,16 @@
     "message": "Message",
     "stop": "Stop"
   },
+  "plan": {
+    "steps": "Implementation Steps",
+    "document": "Plan Document",
+    "implement": "Implement",
+    "edit": "Edit Plan",
+    "drafting": "Plan is being drafted...",
+    "noPlan": "No plan for this session",
+    "noPlanDesc": "Enter Plan Mode to create an implementation plan before coding.",
+    "enterPlanMode": "Enter Plan Mode"
+  },
   "errorBoundary": {
     "title": "Something went wrong",
     "defaultMessage": "An unexpected error occurred in the application.",

@@ -98,6 +98,16 @@
     "message": "消息",
     "stop": "停止"
   },
+  "plan": {
+    "steps": "实现步骤",
+    "document": "计划文档",
+    "implement": "开始实现",
+    "edit": "编辑计划",
+    "drafting": "计划正在生成中...",
+    "noPlan": "该会话暂无计划",
+    "noPlanDesc": "进入计划模式，在编写代码前创建详细的实现计划。",
+    "enterPlanMode": "进入计划模式"
+  },
   "errorBoundary": {
     "title": "出了点问题",
     "defaultMessage": "应用中发生了意外错误。",

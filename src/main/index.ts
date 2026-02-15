@@ -1,6 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain, Menu, Tray } from 'electron'
 
 import { join } from 'path'
+import { mkdirSync } from 'fs'
 
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 
@@ -37,6 +38,20 @@ const mcpManager = new McpManager()
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isQuiting = false
+
+function configureChromiumCachePaths(): void {
+  const sessionDataPath = join(app.getPath('userData'), 'session-data')
+  const diskCachePath = join(sessionDataPath, 'Cache')
+
+  try {
+    mkdirSync(sessionDataPath, { recursive: true })
+    mkdirSync(diskCachePath, { recursive: true })
+    app.setPath('sessionData', sessionDataPath)
+    app.commandLine.appendSwitch('disk-cache-dir', diskCachePath)
+  } catch (error) {
+    console.error('[Main] Failed to configure Chromium cache paths:', error)
+  }
+}
 
 function showMainWindow(): void {
 
@@ -244,9 +259,19 @@ process.on('unhandledRejection', (reason) => {
 
 })
 
+configureChromiumCachePaths()
 
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+}
 
-app.whenReady().then(() => {
+if (gotSingleInstanceLock) {
+  app.on('second-instance', () => {
+    showMainWindow()
+  })
+
+  app.whenReady().then(() => {
 
   // Set app user model id for windows
 
@@ -312,7 +337,8 @@ app.whenReady().then(() => {
 
   })
 
-})
+  })
+}
 
 
 

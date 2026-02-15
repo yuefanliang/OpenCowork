@@ -2,6 +2,8 @@ import { ipcMain } from 'electron'
 import { getDb } from '../db/database'
 import * as sessionsDao from '../db/sessions-dao'
 import * as messagesDao from '../db/messages-dao'
+import * as plansDao from '../db/plans-dao'
+import * as tasksDao from '../db/tasks-dao'
 
 export function registerDbHandlers(): void {
   // Initialize DB on registration
@@ -129,5 +131,137 @@ export function registerDbHandlers(): void {
 
   ipcMain.handle('db:messages:count', (_event, sessionId: string) => {
     return messagesDao.getMessageCount(sessionId)
+  })
+
+  // --- Plans ---
+
+  ipcMain.handle('db:plans:list', () => {
+    return plansDao.listPlans()
+  })
+
+  ipcMain.handle('db:plans:get', (_event, id: string) => {
+    return plansDao.getPlan(id) ?? null
+  })
+
+  ipcMain.handle('db:plans:get-by-session', (_event, sessionId: string) => {
+    return plansDao.getPlanBySession(sessionId) ?? null
+  })
+
+  ipcMain.handle(
+    'db:plans:create',
+    (
+      _event,
+      plan: {
+        id: string
+        sessionId: string
+        title: string
+        status?: string
+        filePath?: string
+        content?: string
+        specJson?: string
+        createdAt: number
+        updatedAt: number
+      }
+    ) => {
+      plansDao.createPlan(plan)
+      return { success: true }
+    }
+  )
+
+  ipcMain.handle(
+    'db:plans:update',
+    (
+      _event,
+      args: {
+        id: string
+        patch: Partial<{
+          title: string
+          status: string
+          filePath: string | null
+          content: string | null
+          specJson: string | null
+          updatedAt: number
+        }>
+      }
+    ) => {
+      plansDao.updatePlan(args.id, args.patch)
+      return { success: true }
+    }
+  )
+
+  ipcMain.handle('db:plans:delete', (_event, id: string) => {
+    plansDao.deletePlan(id)
+    return { success: true }
+  })
+
+  // --- Tasks (session-bound) ---
+
+  ipcMain.handle('db:tasks:list-by-session', (_event, sessionId: string) => {
+    return tasksDao.listTasksBySession(sessionId)
+  })
+
+  ipcMain.handle('db:tasks:get', (_event, id: string) => {
+    return tasksDao.getTask(id) ?? null
+  })
+
+  ipcMain.handle(
+    'db:tasks:create',
+    (
+      _event,
+      task: {
+        id: string
+        sessionId: string
+        planId?: string
+        subject: string
+        description: string
+        activeForm?: string
+        status?: string
+        owner?: string
+        blocks?: string[]
+        blockedBy?: string[]
+        metadata?: Record<string, unknown>
+        sortOrder: number
+        createdAt: number
+        updatedAt: number
+      }
+    ) => {
+      tasksDao.createTask(task)
+      return { success: true }
+    }
+  )
+
+  ipcMain.handle(
+    'db:tasks:update',
+    (
+      _event,
+      args: {
+        id: string
+        patch: Partial<{
+          subject: string
+          description: string
+          activeForm: string | null
+          status: string
+          owner: string | null
+          blocks: string[]
+          blockedBy: string[]
+          metadata: Record<string, unknown> | null
+          sortOrder: number
+          updatedAt: number
+        }>
+      }
+    ) => {
+      tasksDao.updateTask(args.id, args.patch)
+      return { success: true }
+    }
+  )
+
+  ipcMain.handle('db:tasks:delete', (_event, id: string) => {
+    tasksDao.deleteTask(id)
+    return { success: true }
+  })
+
+  ipcMain.handle('db:tasks:delete-by-session', (_event, sessionId: string) => {
+    tasksDao.deleteTasksBySession(sessionId)
+    return { success: true }
   })
 }

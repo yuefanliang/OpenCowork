@@ -1,8 +1,9 @@
 import * as React from 'react'
 import { useState as useLocalState } from 'react'
-import { Send, Square, FolderOpen, AlertTriangle, FileUp, Sparkles, X, Trash2, ImagePlus, Brain, ChevronDown } from 'lucide-react'
+import { Send, FolderOpen, AlertTriangle, FileUp, Sparkles, X, Trash2, ImagePlus, Brain, ChevronDown, ClipboardList } from 'lucide-react'
 import { nanoid } from 'nanoid'
 import { Button } from '@renderer/components/ui/button'
+import { Spinner } from '@renderer/components/ui/spinner'
 import { Textarea } from '@renderer/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { useProviderStore } from '@renderer/stores/provider-store'
@@ -248,11 +249,20 @@ export function InputArea({
   const activeSessionId = useChatStore((s) => s.activeSessionId)
   const hasMessages = useChatStore((s) => {
     const session = s.sessions.find((sess) => sess.id === s.activeSessionId)
-    return (session?.messages.length ?? 0) > 0
+    return (session?.messageCount ?? 0) > 0
   })
   const clearSessionMessages = useChatStore((s) => s.clearSessionMessages)
   const hasApiKey = !!(activeProvider?.apiKey) || activeProvider?.requiresApiKey === false
   const needsWorkingFolder = mode !== 'chat' && !workingFolder
+  const planMode = useUIStore((s) => s.planMode)
+  const togglePlanMode = React.useCallback(() => {
+    const store = useUIStore.getState()
+    if (store.planMode) {
+      store.exitPlanMode()
+    } else {
+      store.enterPlanMode()
+    }
+  }, [])
 
   // Auto-focus textarea when not streaming or when switching sessions
   React.useEffect(() => {
@@ -260,6 +270,11 @@ export function InputArea({
       textareaRef.current?.focus()
     }
   }, [isStreaming, disabled, activeSessionId])
+
+  React.useEffect(() => {
+    if (!activeSessionId) return
+    void useChatStore.getState().loadSessionMessages(activeSessionId)
+  }, [activeSessionId])
 
   // Consume pendingInsertText from FileTree clicks
   const pendingInsert = useUIStore((s) => s.pendingInsertText)
@@ -403,6 +418,24 @@ export function InputArea({
         </button>
       )}
 
+      {/* Plan mode banner */}
+      {planMode && mode !== 'chat' && (
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-violet-500/30 bg-violet-500/5 px-3 py-1.5">
+          <div className="flex items-center gap-1.5 text-xs text-violet-600 dark:text-violet-400">
+            <ClipboardList className="size-3.5 shrink-0" />
+            <span>{t('input.planModeActive', { defaultValue: 'Plan Mode — exploring codebase, no file changes' })}</span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-5 px-1.5 text-[10px] text-violet-600 dark:text-violet-400 hover:bg-violet-500/10"
+            onClick={() => useUIStore.getState().exitPlanMode()}
+          >
+            {t('input.exitPlanMode', { defaultValue: 'Exit Plan Mode' })}
+          </Button>
+        </div>
+      )}
+
       {/* Working folder indicator */}
       {workingFolder && (
         <div className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -512,6 +545,30 @@ export function InputArea({
                   <ActivePluginsBadge />
                   <ActiveMcpsBadge />
                 </>
+              )}
+
+              {/* Plan mode toggle */}
+              {mode !== 'chat' && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className={`h-8 rounded-lg px-2 gap-1 transition-colors ${
+                        planMode
+                          ? 'text-violet-600 dark:text-violet-400 bg-violet-500/10 hover:bg-violet-500/20'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                      onClick={togglePlanMode}
+                      disabled={disabled || isStreaming}
+                    >
+                      <ClipboardList className="size-4" />
+                      {planMode && <span className="text-[10px] font-medium">Plan</span>}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {planMode ? t('input.exitPlanMode', { defaultValue: 'Exit Plan Mode' }) : t('input.enterPlanMode', { defaultValue: 'Enter Plan Mode' })}
+                  </TooltipContent>
+                </Tooltip>
               )}
 
               {/* Image upload button */}
@@ -689,8 +746,7 @@ export function InputArea({
                       className="h-8 rounded-lg px-3"
                       onClick={onStop}
                     >
-                      <Square className="size-3.5 mr-1.5" />
-                      {t('action.stop', { ns: 'common' })}
+                      <Spinner className="size-4 text-white" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>{t('input.stopTooltip')}</TooltipContent>

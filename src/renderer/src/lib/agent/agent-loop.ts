@@ -7,6 +7,21 @@ import type { AgentEvent, AgentLoopConfig, ToolCallState } from './types'
 import type { ToolContext } from '../tools/tool-types'
 import { shouldCompress, shouldPreCompress, preCompressMessages } from './context-compression'
 
+const MAX_PROVIDER_RETRIES = 3
+const BASE_RETRY_DELAY_MS = 1_500
+
+class ProviderRequestError extends Error {
+  statusCode?: number
+  errorType?: string
+
+  constructor(message: string, options?: { statusCode?: number; type?: string }) {
+    super(message)
+    this.name = 'ProviderRequestError'
+    this.statusCode = options?.statusCode
+    this.errorType = options?.type
+  }
+}
+
 /**
  * Core Agentic Loop - an AsyncGenerator that yields AgentEvents.
  *
@@ -25,8 +40,9 @@ export async function* runAgentLoop(
   let conversationMessages = [...messages]
   let iteration = 0
   let lastInputTokens = 0
+  const hasIterationLimit = Number.isFinite(config.maxIterations) && config.maxIterations > 0
 
-  while (iteration < config.maxIterations) {
+  while (!hasIterationLimit || iteration < config.maxIterations) {
     // --- Context management (between iterations) ---
     if (lastInputTokens > 0 && config.contextCompression && !config.signal.aborted) {
       const cc = config.contextCompression
@@ -67,121 +83,144 @@ export async function* runAgentLoop(
     iteration++
     yield { type: 'iteration_start', iteration }
 
-    // 1. Send to LLM and collect streaming events
-    const assistantContentBlocks: ContentBlock[] = []
-    const toolCalls: ToolCallState[] = []
-    let currentToolArgs = ''
-    let currentToolId = ''
-    let currentToolName = ''
+    // 1. Send to LLM and collect streaming events (with retries)
+    let assistantContentBlocks: ContentBlock[] = []
+    let toolCalls: ToolCallState[] = []
+    let sendAttempt = 0
     // stopReason from message_end is not used at loop level
 
-    try {
-      const stream = provider.sendMessage(
-        conversationMessages,
-        config.tools,
-        config.provider,
-        config.signal
-      )
+    while (sendAttempt < MAX_PROVIDER_RETRIES) {
+      assistantContentBlocks = []
+      toolCalls = []
+      let currentToolArgs = ''
+      let currentToolId = ''
+      let currentToolName = ''
+      let streamedContent = false
 
-      for await (const event of stream) {
+      try {
+        const stream = provider.sendMessage(
+          conversationMessages,
+          config.tools,
+          config.provider,
+          config.signal
+        )
+
+        for await (const event of stream) {
+          if (config.signal.aborted) {
+            yield { type: 'loop_end', reason: 'aborted' }
+            return
+          }
+
+          switch (event.type) {
+            case 'thinking_delta':
+              streamedContent = true
+              yield { type: 'thinking_delta', thinking: event.thinking! }
+              appendThinkingToBlocks(assistantContentBlocks, event.thinking!)
+              break
+
+            case 'text_delta':
+              streamedContent = true
+              yield { type: 'text_delta', text: event.text! }
+              // Accumulate text into content blocks
+              appendTextToBlocks(assistantContentBlocks, event.text!)
+              break
+
+            case 'tool_call_start':
+              streamedContent = true
+              currentToolId = event.toolCallId!
+              currentToolName = event.toolName!
+              currentToolArgs = ''
+              // Immediately notify UI so it can render the tool card while args stream
+              yield { type: 'tool_use_streaming_start', toolCallId: currentToolId, toolName: currentToolName }
+              break
+
+            case 'tool_call_delta':
+              streamedContent = true
+              currentToolArgs += event.argumentsDelta ?? ''
+              // Try partial-json parse so UI can show args in real-time
+              try {
+                const partial = parsePartialJSON(currentToolArgs)
+                if (partial && typeof partial === 'object' && !Array.isArray(partial)) {
+                  yield { type: 'tool_use_args_delta', toolCallId: currentToolId, partialInput: partial as Record<string, unknown> }
+                }
+              } catch { /* incomplete JSON not yet parsable — skip */ }
+              break
+
+            case 'tool_call_end': {
+              streamedContent = true
+              const endToolId = event.toolCallId || currentToolId || nanoid()
+              const endToolName = event.toolName || currentToolName
+              const toolInput = event.toolCallInput ?? safeParseJSON(currentToolArgs)
+              const toolUseBlock: ToolUseBlock = {
+                type: 'tool_use',
+                id: endToolId,
+                name: endToolName,
+                input: toolInput,
+              }
+              assistantContentBlocks.push(toolUseBlock)
+
+              const requiresApproval = toolRegistry.checkRequiresApproval(
+                endToolName,
+                toolInput,
+                toolCtx
+              )
+
+              const tc: ToolCallState = {
+                id: toolUseBlock.id,
+                name: endToolName,
+                input: toolInput,
+                status: requiresApproval ? 'pending_approval' : 'running',
+                requiresApproval,
+              }
+              toolCalls.push(tc)
+              yield { type: 'tool_use_generated', toolUseBlock: { id: toolUseBlock.id, name: endToolName, input: toolInput } }
+              break;
+            }
+
+            case 'message_end':
+              if (event.usage) {
+                lastInputTokens = event.usage.inputTokens
+              }
+              if (event.usage || event.timing) {
+                yield { type: 'message_end', usage: event.usage, timing: event.timing }
+              }
+              break
+
+            case 'request_debug':
+              if (event.debugInfo) {
+                yield { type: 'request_debug', debugInfo: event.debugInfo }
+              }
+              break
+
+            case 'error':
+              throw new ProviderRequestError(event.error?.message ?? 'Unknown API error', {
+                type: event.error?.type,
+              })
+          }
+        }
+
+        // Successful attempt, break retry loop
+        break
+      } catch (err) {
         if (config.signal.aborted) {
           yield { type: 'loop_end', reason: 'aborted' }
           return
         }
-
-        switch (event.type) {
-          case 'thinking_delta':
-            yield { type: 'thinking_delta', thinking: event.thinking! }
-            appendThinkingToBlocks(assistantContentBlocks, event.thinking!)
-            break
-
-          case 'text_delta':
-            yield { type: 'text_delta', text: event.text! }
-            // Accumulate text into content blocks
-            appendTextToBlocks(assistantContentBlocks, event.text!)
-            break
-
-          case 'tool_call_start':
-            currentToolId = event.toolCallId!
-            currentToolName = event.toolName!
-            currentToolArgs = ''
-            // Immediately notify UI so it can render the tool card while args stream
-            yield { type: 'tool_use_streaming_start', toolCallId: currentToolId, toolName: currentToolName }
-            break
-
-          case 'tool_call_delta':
-            currentToolArgs += event.argumentsDelta ?? ''
-            // Try partial-json parse so UI can show args in real-time
-            try {
-              const partial = parsePartialJSON(currentToolArgs)
-              if (partial && typeof partial === 'object' && !Array.isArray(partial)) {
-                yield { type: 'tool_use_args_delta', toolCallId: currentToolId, partialInput: partial as Record<string, unknown> }
-              }
-            } catch { /* incomplete JSON not yet parsable — skip */ }
-            break
-
-          case 'tool_call_end': {
-            const endToolId = event.toolCallId || currentToolId || nanoid()
-            const endToolName = event.toolName || currentToolName
-            const toolInput = event.toolCallInput ?? safeParseJSON(currentToolArgs)
-            const toolUseBlock: ToolUseBlock = {
-              type: 'tool_use',
-              id: endToolId,
-              name: endToolName,
-              input: toolInput,
-            }
-            assistantContentBlocks.push(toolUseBlock)
-
-            const requiresApproval = toolRegistry.checkRequiresApproval(
-              endToolName,
-              toolInput,
-              toolCtx
-            )
-
-            const tc: ToolCallState = {
-              id: toolUseBlock.id,
-              name: endToolName,
-              input: toolInput,
-              status: requiresApproval ? 'pending_approval' : 'running',
-              requiresApproval,
-            }
-            toolCalls.push(tc)
-            yield { type: 'tool_use_generated', toolUseBlock: { id: toolUseBlock.id, name: endToolName, input: toolInput } }
-            break;
-          }
-
-          case 'message_end':
-            if (event.usage) {
-              lastInputTokens = event.usage.inputTokens
-            }
-            if (event.usage || event.timing) {
-              yield { type: 'message_end', usage: event.usage, timing: event.timing }
-            }
-            break
-
-          case 'request_debug':
-            if (event.debugInfo) {
-              yield { type: 'request_debug', debugInfo: event.debugInfo }
-            }
-            break
-
-          case 'error':
-            yield {
-              type: 'error',
-              error: new Error(event.error?.message ?? 'Unknown API error'),
-            }
-            yield { type: 'loop_end', reason: 'error' }
-            return
+        const delay = getRetryDelay(err, sendAttempt, streamedContent)
+        if (delay === null || sendAttempt === MAX_PROVIDER_RETRIES - 1) {
+          yield { type: 'error', error: err instanceof Error ? err : new Error(String(err)) }
+          yield { type: 'loop_end', reason: 'error' }
+          return
         }
+        sendAttempt++
+        try {
+          await delayWithAbort(delay, config.signal)
+        } catch {
+          yield { type: 'loop_end', reason: 'aborted' }
+          return
+        }
+        continue
       }
-    } catch (err) {
-      if (config.signal.aborted) {
-        yield { type: 'loop_end', reason: 'aborted' }
-        return
-      }
-      yield { type: 'error', error: err instanceof Error ? err : new Error(String(err)) }
-      yield { type: 'loop_end', reason: 'error' }
-      return
     }
 
     // Push assistant message to conversation
@@ -284,7 +323,11 @@ export async function* runAgentLoop(
     }
   }
 
-  yield { type: 'loop_end', reason: 'max_iterations' }
+  if (hasIterationLimit) {
+    yield { type: 'loop_end', reason: 'max_iterations' }
+  } else {
+    yield { type: 'loop_end', reason: 'completed' }
+  }
 }
 
 // --- Helpers ---
@@ -313,4 +356,70 @@ function safeParseJSON(str: string): Record<string, unknown> {
   } catch {
     return {}
   }
+}
+
+function getRetryDelay(err: unknown, attempt: number, streamedContent: boolean): number | null {
+  const status = extractStatusCode(err)
+
+  if (status === 429) {
+    return BASE_RETRY_DELAY_MS * Math.pow(2, attempt + 1)
+  }
+
+  if (status && status >= 400 && status < 500) {
+    // Non-retryable client errors
+    return null
+  }
+
+  if (status && status >= 500) {
+    return BASE_RETRY_DELAY_MS * Math.pow(2, attempt)
+  }
+
+  // If the provider didn't stream anything before failing, treat it as transient
+  if (!streamedContent) {
+    return BASE_RETRY_DELAY_MS * Math.pow(2, attempt)
+  }
+
+  // Default small backoff for partial streams
+  return BASE_RETRY_DELAY_MS
+}
+
+function extractStatusCode(err: unknown): number | null {
+  if (err instanceof ProviderRequestError && typeof err.statusCode === 'number') {
+    return err.statusCode
+  }
+
+  const message = err instanceof Error ? err.message : String(err)
+  const match = /HTTP\s+(\d{3})/i.exec(message)
+  if (match) {
+    const code = Number(match[1])
+    return Number.isFinite(code) ? code : null
+  }
+
+  return null
+}
+
+function delayWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error('aborted'))
+      return
+    }
+
+    const timer = setTimeout(() => {
+      cleanup()
+      resolve()
+    }, ms)
+
+    const onAbort = (): void => {
+      clearTimeout(timer)
+      cleanup()
+      reject(new Error('aborted'))
+    }
+
+    const cleanup = (): void => {
+      signal?.removeEventListener('abort', onAbort)
+    }
+
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
 }

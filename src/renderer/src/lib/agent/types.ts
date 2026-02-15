@@ -49,6 +49,7 @@ export class MessageQueue {
 // --- Agent Loop Config ---
 
 export interface AgentLoopConfig {
+  /** Max loop iterations. Set <= 0 for unlimited iterations. */
   maxIterations: number
   provider: ProviderConfig
   tools: ToolDefinition[]

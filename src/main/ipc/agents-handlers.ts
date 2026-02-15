@@ -109,7 +109,8 @@ function parseAgentFile(content: string, filename: string): AgentInfo | null {
     description,
     icon: getString('icon'),
     allowedTools,
-    maxIterations: getNumber('maxIterations') ?? 8,
+    // 0 => unlimited iterations; explicit value in frontmatter still takes precedence
+    maxIterations: getNumber('maxIterations') ?? 0,
     model: getString('model'),
     temperature: getNumber('temperature'),
     systemPrompt: body || `You are ${name}, a specialized agent.`,

@@ -7,6 +7,7 @@ import { ErrorBoundary } from './components/error-boundary'
 import { useSettingsStore } from './stores/settings-store'
 import { initProviderStore } from './stores/provider-store'
 import { useChatStore } from './stores/chat-store'
+import { usePlanStore } from './stores/plan-store'
 import { registerAllTools } from './lib/tools'
 import { registerAllProviders } from './lib/api'
 import { registerAllViewers } from './lib/preview/register-viewers'
@@ -31,6 +32,7 @@ function App(): React.JSX.Element {
   // Load sessions from SQLite and API key from secure main process storage on startup
   useEffect(() => {
     useChatStore.getState().loadFromDb()
+    usePlanStore.getState().loadPlansFromDb()
     window.electron.ipcRenderer
       .invoke('settings:get', 'apiKey')
       .then((key) => {

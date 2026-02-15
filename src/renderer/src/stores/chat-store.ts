@@ -13,6 +13,7 @@ import { ipcClient } from '../lib/ipc/ipc-client'
 import { useAgentStore } from './agent-store'
 import { useTeamStore } from './team-store'
 import { useTaskStore } from './task-store'
+import { usePlanStore } from './plan-store'
 
 export type SessionMode = 'chat' | 'cowork' | 'code'
 
@@ -22,6 +23,8 @@ export interface Session {
   icon?: string
   mode: SessionMode
   messages: UnifiedMessage[]
+  messageCount: number
+  messagesLoaded: boolean
   createdAt: number
   updatedAt: number
   workingFolder?: string
@@ -85,6 +88,10 @@ function dbTruncateMessagesFrom(sessionId: string, fromSortOrder: number): void 
 
 const _pendingFlush = new Map<string, ReturnType<typeof setTimeout>>()
 
+function stripThinkTagMarkers(text: string): string {
+  return text.replace(/<\s*\/?\s*think\s*>/gi, '')
+}
+
 function dbFlushMessage(sessionId: string, msg: UnifiedMessage, sortOrder: number): void {
   const key = msg.id
   const existing = _pendingFlush.get(key)
@@ -116,6 +123,7 @@ interface ChatStore {
 
   // Initialization
   loadFromDb: () => Promise<void>
+  loadSessionMessages: (sessionId: string, force?: boolean) => Promise<void>
 
   // Session CRUD
   createSession: (mode: SessionMode) => string
@@ -126,7 +134,7 @@ interface ChatStore {
   updateSessionMode: (id: string, mode: SessionMode) => void
   setWorkingFolder: (sessionId: string, folder: string) => void
   clearSessionMessages: (sessionId: string) => void
-  duplicateSession: (sessionId: string) => string | null
+  duplicateSession: (sessionId: string) => Promise<string | null>
   togglePinSession: (sessionId: string) => void
   restoreSession: (session: Session) => void
   clearAllSessions: () => void
@@ -165,6 +173,7 @@ interface SessionRow {
   updated_at: number
   working_folder: string | null
   pinned: number
+  message_count?: number
 }
 
 interface MessageRow {
@@ -178,12 +187,15 @@ interface MessageRow {
 }
 
 function rowToSession(row: SessionRow, messages: UnifiedMessage[] = []): Session {
+  const messageCount = row.message_count ?? messages.length
   return {
     id: row.id,
     title: row.title,
     icon: row.icon ?? undefined,
     mode: row.mode as SessionMode,
     messages,
+    messageCount,
+    messagesLoaded: messages.length > 0 || messageCount === 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     workingFolder: row.working_folder ?? undefined,
@@ -286,21 +298,45 @@ export const useChatStore = create<ChatStore>()(
     streamingMessages: {},
     _loaded: false,
 
+    loadSessionMessages: async (sessionId, force = false) => {
+      const session = get().sessions.find((s) => s.id === sessionId)
+      if (!session) return
+      if (session.messagesLoaded && !force) return
+      try {
+        const msgRows = (await ipcClient.invoke('db:messages:list', sessionId)) as MessageRow[]
+        const messages = msgRows.map(rowToMessage)
+        set((state) => {
+          const target = state.sessions.find((s) => s.id === sessionId)
+          if (!target) return
+          target.messages = messages
+          target.messagesLoaded = true
+          target.messageCount = messages.length
+        })
+      } catch (err) {
+        console.error('[ChatStore] Failed to load session messages:', err)
+      }
+    },
+
     loadFromDb: async () => {
       try {
         const sessionRows = (await ipcClient.invoke('db:sessions:list')) as SessionRow[]
-        const sessions: Session[] = []
-        for (const row of sessionRows) {
-          const msgRows = (await ipcClient.invoke('db:messages:list', row.id)) as MessageRow[]
-          sessions.push(rowToSession(row, msgRows.map(rowToMessage)))
-        }
+        const sessions: Session[] = sessionRows.map((row) => {
+          const session = rowToSession(row, [])
+          if (session.messageCount === 0) {
+            session.messagesLoaded = true
+          }
+          return session
+        })
+        let nextActiveSessionId: string | null = null
         set((state) => {
           state.sessions = sessions
           state._loaded = true
-          if (sessions.length > 0 && !state.activeSessionId) {
-            state.activeSessionId = sessions[0].id
-          }
+          nextActiveSessionId = state.activeSessionId ?? sessions[0]?.id ?? null
+          state.activeSessionId = nextActiveSessionId
         })
+        if (nextActiveSessionId) {
+          await get().loadSessionMessages(nextActiveSessionId)
+        }
       } catch (err) {
         console.error('[ChatStore] Failed to load from DB:', err)
         set({ _loaded: true })
@@ -315,6 +351,8 @@ export const useChatStore = create<ChatStore>()(
         title: 'New Conversation',
         mode,
         messages: [],
+        messageCount: 0,
+        messagesLoaded: true,
         createdAt: now,
         updatedAt: now,
       }
@@ -328,28 +366,45 @@ export const useChatStore = create<ChatStore>()(
     },
 
     deleteSession: (id) => {
+      let nextActiveId: string | null = null
       set((state) => {
         const idx = state.sessions.findIndex((s) => s.id === id)
         if (idx !== -1) state.sessions.splice(idx, 1)
         if (state.activeSessionId === id) {
           state.activeSessionId = state.sessions[0]?.id ?? null
         }
+        nextActiveId = state.activeSessionId
         // Clean up per-session streaming state
         delete state.streamingMessages[id]
       })
+      if (nextActiveId) {
+        void get().loadSessionMessages(nextActiveId)
+      }
       // Clean up agent-store per-session state
-      useAgentStore.getState().setSessionStatus(id, null)
-      useAgentStore.getState().clearSessionData(id)
+      const agentState = useAgentStore.getState()
+      agentState.setSessionStatus(id, null)
+      agentState.clearSessionData(id)
+      agentState.clearToolCalls()
       // Clean up team-store per-session state
       useTeamStore.getState().clearSessionTeam(id)
+      // Clean up plan-store per-session state
+      const plan = usePlanStore.getState().getPlanBySession(id)
+      if (plan) usePlanStore.getState().deletePlan(plan.id)
+      // Clean up task-store per-session state
+      useTaskStore.getState().deleteSessionTasks(id)
       dbDeleteSession(id)
     },
 
-    setActiveSession: (id) => set((state) => {
-      state.activeSessionId = id
-      // Sync convenience field to the new active session's streaming state
-      state.streamingMessageId = id ? (state.streamingMessages[id] ?? null) : null
-    }),
+    setActiveSession: (id) => {
+      set((state) => {
+        state.activeSessionId = id
+        // Sync convenience field to the new active session's streaming state
+        state.streamingMessageId = id ? (state.streamingMessages[id] ?? null) : null
+      })
+      if (id) {
+        void get().loadSessionMessages(id)
+      }
+    },
 
     updateSessionTitle: (id, title) => {
       const now = Date.now()
@@ -408,12 +463,17 @@ export const useChatStore = create<ChatStore>()(
     },
 
     restoreSession: (session) => {
+      const normalizedSession: Session = {
+        ...session,
+        messageCount: session.messageCount ?? session.messages.length,
+        messagesLoaded: session.messagesLoaded ?? true,
+      }
       set((state) => {
-        state.sessions.push(session)
-        state.activeSessionId = session.id
+        state.sessions.push(normalizedSession)
+        state.activeSessionId = normalizedSession.id
       })
-      dbCreateSession(session)
-      session.messages.forEach((msg, i) => dbAddMessage(session.id, msg, i))
+      dbCreateSession(normalizedSession)
+      normalizedSession.messages.forEach((msg, i) => dbAddMessage(normalizedSession.id, msg, i))
     },
 
     clearAllSessions: () => {
@@ -422,14 +482,20 @@ export const useChatStore = create<ChatStore>()(
         state.sessions = []
         state.activeSessionId = null
       })
-      // Clean up agent-store and team-store for all sessions
+      // Clean up agent-store, team-store, plan-store, task-store for all sessions
       const agentState = useAgentStore.getState()
       const teamState = useTeamStore.getState()
+      const planState = usePlanStore.getState()
+      const taskState = useTaskStore.getState()
       for (const id of ids) {
         agentState.setSessionStatus(id, null)
         agentState.clearSessionData(id)
         teamState.clearSessionTeam(id)
+        const plan = planState.getPlanBySession(id)
+        if (plan) planState.deletePlan(plan.id)
+        taskState.deleteSessionTasks(id)
       }
+      agentState.clearToolCalls()
       dbClearAllSessions()
     },
 
@@ -439,6 +505,8 @@ export const useChatStore = create<ChatStore>()(
         const session = state.sessions.find((s) => s.id === sessionId)
         if (session) {
           session.messages = []
+          session.messageCount = 0
+          session.messagesLoaded = true
           session.title = 'New Conversation'
           session.updatedAt = now
         }
@@ -447,11 +515,15 @@ export const useChatStore = create<ChatStore>()(
       dbUpdateSession(sessionId, { title: 'New Conversation', updatedAt: now })
       useAgentStore.getState().setSessionStatus(sessionId, null)
       useAgentStore.getState().clearSessionData(sessionId)
+      useAgentStore.getState().clearToolCalls()
       useTeamStore.getState().clearSessionTeam(sessionId)
+      const plan = usePlanStore.getState().getPlanBySession(sessionId)
+      if (plan) usePlanStore.getState().deletePlan(plan.id)
       useTaskStore.getState().clearTasks()
     },
 
-    duplicateSession: (sessionId) => {
+    duplicateSession: async (sessionId) => {
+      await get().loadSessionMessages(sessionId)
       const source = get().sessions.find((s) => s.id === sessionId)
       if (!source) return null
       const newId = nanoid()
@@ -463,6 +535,8 @@ export const useChatStore = create<ChatStore>()(
         icon: source.icon,
         mode: source.mode,
         messages: clonedMessages,
+        messageCount: clonedMessages.length,
+        messagesLoaded: true,
         createdAt: now,
         updatedAt: now,
         workingFolder: source.workingFolder,
@@ -492,7 +566,10 @@ export const useChatStore = create<ChatStore>()(
       // Truncate from the assistant message onward (removes it + trailing tool_result messages)
       set((state) => {
         const s = state.sessions.find((s) => s.id === sessionId)
-        if (s) s.messages.splice(assistantIdx)
+        if (s) {
+          s.messages.splice(assistantIdx)
+          s.messageCount = s.messages.length
+        }
       })
       const newLen = get().sessions.find((s) => s.id === sessionId)?.messages.length ?? 0
       dbTruncateMessagesFrom(sessionId, newLen)
@@ -514,6 +591,7 @@ export const useChatStore = create<ChatStore>()(
         const s = state.sessions.find((s) => s.id === sessionId)
         if (s && s.messages.length > 0 && s.messages[s.messages.length - 1].role === 'user') {
           s.messages.pop()
+          s.messageCount = s.messages.length
         }
       })
       const newLen = get().sessions.find((s) => s.id === sessionId)?.messages.length ?? 0
@@ -525,6 +603,7 @@ export const useChatStore = create<ChatStore>()(
         const session = state.sessions.find((s) => s.id === sessionId)
         if (session && fromIndex >= 0 && fromIndex < session.messages.length) {
           session.messages.splice(fromIndex)
+          session.messageCount = session.messages.length
           session.updatedAt = Date.now()
         }
       })
@@ -538,6 +617,8 @@ export const useChatStore = create<ChatStore>()(
         const session = state.sessions.find((s) => s.id === sessionId)
         if (session) {
           session.messages = messages
+          session.messageCount = messages.length
+          session.messagesLoaded = true
           session.updatedAt = now
         }
       })
@@ -560,8 +641,13 @@ export const useChatStore = create<ChatStore>()(
       set((state) => {
         const session = state.sessions.find((s) => s.id === sessionId)
         if (session) {
-          sortOrder = session.messages.length
+          sortOrder = session.messageCount
+          if (!session.messagesLoaded) {
+            session.messagesLoaded = true
+            session.messages = []
+          }
           session.messages.push(msg)
+          session.messageCount += 1
           session.updatedAt = Date.now()
         }
       })
@@ -619,14 +705,20 @@ export const useChatStore = create<ChatStore>()(
         const now = Date.now()
         if (typeof msg.content === 'string') {
           // Convert empty string to block array with a thinking block
-          msg.content = [{ type: 'thinking', thinking, startedAt: now }]
+          const cleanedThinking = stripThinkTagMarkers(thinking)
+          if (!cleanedThinking) return
+          msg.content = [{ type: 'thinking', thinking: cleanedThinking, startedAt: now }]
         } else {
           const blocks = msg.content as ContentBlock[]
           const lastBlock = blocks[blocks.length - 1]
           if (lastBlock && lastBlock.type === 'thinking') {
-            ;(lastBlock as ThinkingBlock).thinking += thinking
+            ;(lastBlock as ThinkingBlock).thinking = stripThinkTagMarkers(
+              (lastBlock as ThinkingBlock).thinking + thinking
+            )
           } else {
-            blocks.push({ type: 'thinking', thinking, startedAt: now })
+            const cleanedThinking = stripThinkTagMarkers(thinking)
+            if (!cleanedThinking) return
+            blocks.push({ type: 'thinking', thinking: cleanedThinking, startedAt: now })
           }
         }
       })

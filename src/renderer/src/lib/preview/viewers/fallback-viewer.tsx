@@ -1,5 +1,10 @@
-import Editor from '@monaco-editor/react'
+import * as React from 'react'
 import type { ViewerProps } from '../viewer-registry'
+
+const MonacoEditor = React.lazy(async () => {
+  const mod = await import('@monaco-editor/react')
+  return { default: mod.default }
+})
 
 function guessLanguage(filePath: string): string {
   const ext = filePath.lastIndexOf('.') >= 0 ? filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase() : ''
@@ -19,21 +24,29 @@ function guessLanguage(filePath: string): string {
 
 export function FallbackViewer({ filePath, content, onContentChange }: ViewerProps): React.JSX.Element {
   return (
-    <Editor
-      height="100%"
-      language={guessLanguage(filePath)}
-      theme="vs-dark"
-      value={content}
-      onChange={(value) => onContentChange?.(value ?? '')}
-      options={{
-        minimap: { enabled: false },
-        fontSize: 13,
-        lineNumbers: 'on',
-        wordWrap: 'on',
-        scrollBeyondLastLine: false,
-        automaticLayout: true,
-        tabSize: 2,
-      }}
-    />
+    <React.Suspense
+      fallback={
+        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+          Loading editor...
+        </div>
+      }
+    >
+      <MonacoEditor
+        height="100%"
+        language={guessLanguage(filePath)}
+        theme="vs-dark"
+        value={content}
+        onChange={(value) => onContentChange?.(value ?? '')}
+        options={{
+          minimap: { enabled: false },
+          fontSize: 13,
+          lineNumbers: 'on',
+          wordWrap: 'on',
+          scrollBeyondLastLine: false,
+          automaticLayout: true,
+          tabSize: 2,
+        }}
+      />
+    </React.Suspense>
   )
 }

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { Settings, BrainCircuit, Info, Server, Puzzle, Cable, Loader2, Download, Github, Sparkles, ShieldCheck, Layers } from 'lucide-react'
+import { Settings, BrainCircuit, Info, Server, Puzzle, Cable, Loader2, Download, Github, Sparkles, ShieldCheck, Layers, HardDriveDownload, HardDriveUpload, Trash2 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { confirm } from '@renderer/components/ui/confirm-dialog'
 import { useUIStore, type SettingsTab } from '@renderer/stores/ui-store'
+import { useChatStore } from '@renderer/stores/chat-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { formatTokens } from '@renderer/lib/format-tokens'
 import { useDebouncedTokens } from '@renderer/hooks/use-estimated-tokens'
@@ -130,6 +131,8 @@ function GeneralPanel(): React.JSX.Element {
   const [releaseUrl, setReleaseUrl] = useState<string | null>(null)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [updateError, setUpdateError] = useState<string | null>(null)
+  const sessions = useChatStore((s) => s.sessions)
+  const clearAllSessions = useChatStore((s) => s.clearAllSessions)
 
   const fetchLatestVersion = useCallback(async () => {
     setCheckingUpdate(true)
@@ -189,6 +192,69 @@ function GeneralPanel(): React.JSX.Element {
   const handleDownload = useCallback((url: string) => {
     window.open(url, '_blank', 'noopener')
   }, [])
+
+  const handleBackupSessions = useCallback(async () => {
+    if (sessions.length === 0) {
+      toast.info(t('general.data.noSessions'))
+      return
+    }
+    await Promise.all(sessions.map((s) => useChatStore.getState().loadSessionMessages(s.id)))
+    const latestSessions = useChatStore.getState().sessions
+    const json = JSON.stringify(latestSessions, null, 2)
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `opencowork-backup-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success(t('general.data.backupSuccess', { count: latestSessions.length }))
+  }, [sessions, t])
+
+  const handleImportSessions = useCallback(() => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      try {
+        const text = await file.text()
+        const data = JSON.parse(text)
+        const list = Array.isArray(data) ? data : [data]
+        const store = useChatStore.getState()
+        let imported = 0
+        for (const session of list) {
+          if (session && session.id && Array.isArray(session.messages)) {
+            const exists = store.sessions.some((s) => s.id === session.id)
+            if (exists) continue
+            store.restoreSession(session)
+            imported++
+          }
+        }
+        if (imported > 0) {
+          toast.success(t('general.data.importSuccess', { count: imported }))
+        } else {
+          toast.info(t('general.data.importNone'))
+        }
+      } catch (err) {
+        toast.error(t('general.data.importFailed', { error: err instanceof Error ? err.message : String(err) }))
+      }
+    }
+    input.click()
+  }, [t])
+
+  const handleClearAllSessions = useCallback(async () => {
+    const total = useChatStore.getState().sessions.length
+    if (total === 0) {
+      toast.info(t('general.data.noSessions'))
+      return
+    }
+    const ok = await confirm({ title: t('general.data.clearConfirm', { count: total }), variant: 'destructive' })
+    if (!ok) return
+    clearAllSessions()
+    toast.success(t('general.data.cleared', { count: total }))
+  }, [clearAllSessions, t])
 
   return (
     <div className="space-y-8">
@@ -423,6 +489,60 @@ function GeneralPanel(): React.JSX.Element {
             checked={settings.devMode}
             onCheckedChange={(checked) => settings.updateSettings({ devMode: checked })}
           />
+        </div>
+      </section>
+
+      <Separator />
+
+      {/* Data Management */}
+      <section className="space-y-4 rounded-xl border border-border/60 bg-muted/15 p-4">
+        <div>
+          <h3 className="text-sm font-semibold">{t('general.data.title')}</h3>
+          <p className="text-xs text-muted-foreground">{t('general.data.subtitle')}</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border border-border/60 bg-background/70 p-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <HardDriveDownload className="size-4 text-primary" />
+              {t('general.data.backupTitle')}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{t('general.data.backupDesc')}</p>
+            <Button
+              className="mt-3 h-8 text-xs"
+              size="sm"
+              variant="outline"
+              disabled={sessions.length === 0}
+              onClick={handleBackupSessions}
+            >
+              {t('general.data.backupAction')}
+            </Button>
+          </div>
+          <div className="rounded-lg border border-border/60 bg-background/70 p-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <HardDriveUpload className="size-4 text-primary" />
+              {t('general.data.importTitle')}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{t('general.data.importDesc')}</p>
+            <Button className="mt-3 h-8 text-xs" size="sm" onClick={handleImportSessions}>
+              {t('general.data.importAction')}
+            </Button>
+          </div>
+          <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 sm:col-span-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-destructive">
+              <Trash2 className="size-4" />
+              {t('general.data.clearTitle')}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{t('general.data.clearDesc')}</p>
+            <Button
+              className="mt-3 h-8 text-xs"
+              size="sm"
+              variant="destructive"
+              onClick={() => void handleClearAllSessions()}
+              disabled={sessions.length === 0}
+            >
+              {t('general.data.clearAction')}
+            </Button>
+          </div>
         </div>
       </section>
 

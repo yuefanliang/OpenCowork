@@ -5,6 +5,7 @@ export const ollamaPreset: BuiltinProviderPreset = {
   name: 'Ollama',
   type: 'openai-chat',
   defaultBaseUrl: 'http://localhost:11434/v1',
+  homepage: 'https://ollama.com',
   defaultModels: [
     
   ],

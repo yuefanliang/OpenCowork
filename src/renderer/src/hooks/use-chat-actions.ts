@@ -15,6 +15,9 @@ import { TEAM_TOOL_NAMES } from '@renderer/lib/agent/teams/register'
 import { teamEvents } from '@renderer/lib/agent/teams/events'
 import { useTeamStore } from '@renderer/stores/team-store'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
+import { clearPendingQuestions } from '@renderer/lib/tools/ask-user-tool'
+import { PLAN_MODE_ALLOWED_TOOLS } from '@renderer/lib/tools/plan-tool'
+import { usePlanStore } from '@renderer/stores/plan-store'
 import { createProvider } from '@renderer/lib/api/provider'
 import { generateSessionTitle } from '@renderer/lib/api/generate-title'
 import type {
@@ -53,6 +56,8 @@ let _teamLeadListenerActive = false
 /** Counter for consecutive auto-triggered turns (reset on user-initiated sendMessage) */
 let _autoTriggerCount = 0
 const MAX_AUTO_TRIGGERS = 10
+// 0 => unlimited iterations (run until loop_end by completion/error/abort)
+const DEFAULT_AGENT_MAX_ITERATIONS = 0
 
 /** Debounce timer for batching teammate reports before draining */
 let _drainTimer: ReturnType<typeof setTimeout> | null = null
@@ -170,6 +175,9 @@ export function abortSession(sessionId: string): void {
   useChatStore.getState().setStreamingMessageId(sessionId, null)
   useAgentStore.getState().setSessionStatus(sessionId, null)
 
+  // Clear any pending AskUserQuestion promises
+  clearPendingQuestions()
+
   // If the active team belongs to this session, abort all teammates
   const team = useTeamStore.getState().activeTeam
   if (team?.sessionId === sessionId) {
@@ -185,6 +193,86 @@ export function abortSession(sessionId: string): void {
   if (!hasOtherRunning) {
     useAgentStore.getState().setRunning(false)
     useAgentStore.getState().abort()
+  }
+}
+
+const STREAM_DELTA_FLUSH_MS = 16
+
+interface StreamDeltaBuffer {
+  pushThinking: (chunk: string) => void
+  pushText: (chunk: string) => void
+  setToolInput: (toolUseId: string, input: Record<string, unknown>) => void
+  flushNow: () => void
+  dispose: () => void
+}
+
+function createStreamDeltaBuffer(sessionId: string, assistantMsgId: string): StreamDeltaBuffer {
+  let thinkingBuffer = ''
+  let textBuffer = ''
+  const toolInputBuffer = new Map<string, Record<string, unknown>>()
+  let timer: ReturnType<typeof setTimeout> | null = null
+
+  const flushNow = (): void => {
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
+
+    if (!thinkingBuffer && !textBuffer && toolInputBuffer.size === 0) return
+
+    const store = useChatStore.getState()
+
+    if (thinkingBuffer) {
+      store.appendThinkingDelta(sessionId, assistantMsgId, thinkingBuffer)
+      thinkingBuffer = ''
+    }
+
+    if (textBuffer) {
+      store.appendTextDelta(sessionId, assistantMsgId, textBuffer)
+      textBuffer = ''
+    }
+
+    if (toolInputBuffer.size > 0) {
+      for (const [toolUseId, input] of toolInputBuffer) {
+        store.updateToolUseInput(sessionId, assistantMsgId, toolUseId, input)
+      }
+      toolInputBuffer.clear()
+    }
+  }
+
+  const scheduleFlush = (): void => {
+    if (timer) return
+    timer = setTimeout(() => {
+      timer = null
+      flushNow()
+    }, STREAM_DELTA_FLUSH_MS)
+  }
+
+  return {
+    pushThinking: (chunk: string) => {
+      if (!chunk) return
+      thinkingBuffer += chunk
+      scheduleFlush()
+    },
+    pushText: (chunk: string) => {
+      if (!chunk) return
+      textBuffer += chunk
+      scheduleFlush()
+    },
+    setToolInput: (toolUseId: string, input: Record<string, unknown>) => {
+      toolInputBuffer.set(toolUseId, input)
+      scheduleFlush()
+    },
+    flushNow,
+    dispose: () => {
+      if (timer) {
+        clearTimeout(timer)
+        timer = null
+      }
+      thinkingBuffer = ''
+      textBuffer = ''
+      toolInputBuffer.clear()
+    }
   }
 }
 
@@ -244,6 +332,7 @@ export function useChatActions() {
     if (!sessionId) {
       sessionId = chatStore.createSession(uiStore.mode)
     }
+    await chatStore.loadSessionMessages(sessionId)
     // After a manual abort, stale errored/orphaned tool blocks can remain at tail
     // and break the next request. Clean them before appending new user input.
     if (useAgentStore.getState().runningSessions[sessionId] !== 'running') {
@@ -251,20 +340,50 @@ export function useChatActions() {
     }
     baseProviderConfig.sessionId = sessionId
 
-    // Add user message (multi-modal when images attached)
-    const userContent: string | ContentBlock[] =
-      images && images.length > 0
-        ? [
-            ...images.map((img) => {
-              const base64 = img.dataUrl.replace(/^data:[^;]+;base64,/, '')
-              return {
-                type: 'image' as const,
-                source: { type: 'base64' as const, mediaType: img.mediaType, data: base64 }
-              }
-            }),
-            ...(text ? [{ type: 'text' as const, text }] : [])
-          ]
-        : text
+    // Check if this is the first user message in the session
+    const currentSession = useChatStore.getState().sessions.find((s) => s.id === sessionId)
+    const isFirstUserMessage = currentSession ? currentSession.messages.filter(m => m.role === 'user').length === 0 : true
+    
+    // Build dynamic context for first message in cowork/code mode (skip for team notifications)
+    const currentMode = uiStore.mode
+    const shouldInjectContext = isFirstUserMessage && (currentMode === 'cowork' || currentMode === 'code') && !source
+    
+    let dynamicContext = ''
+    if (shouldInjectContext) {
+      const { buildDynamicContext } = await import('@renderer/lib/agent/dynamic-context')
+      dynamicContext = buildDynamicContext({ sessionId })
+    }
+
+    // Add user message (multi-modal when images attached, with optional dynamic context)
+    let userContent: string | ContentBlock[]
+    
+    if (images && images.length > 0) {
+      // Images present: always use ContentBlock[] format
+      userContent = [
+        ...images.map((img) => {
+          const base64 = img.dataUrl.replace(/^data:[^;]+;base64,/, '')
+          return {
+            type: 'image' as const,
+            source: { type: 'base64' as const, mediaType: img.mediaType, data: base64 }
+          }
+        }),
+        ...(text ? [{ type: 'text' as const, text }] : [])
+      ]
+      // Prepend dynamic context if needed
+      if (dynamicContext) {
+        userContent.unshift({ type: 'text' as const, text: dynamicContext })
+      }
+    } else if (dynamicContext) {
+      // No images but has dynamic context: use ContentBlock[] format
+      userContent = [
+        { type: 'text' as const, text: dynamicContext },
+        { type: 'text' as const, text }
+      ]
+    } else {
+      // No images, no dynamic context: use simple string
+      userContent = text
+    }
+    
     const userMsg: UnifiedMessage = {
       id: nanoid(),
       role: 'user',
@@ -355,9 +474,15 @@ export function useChatActions() {
       // Filter out team tools when the feature is disabled. Capture after registration changes.
       const allToolDefs = toolRegistry.getDefinitions()
       const finalToolDefs = allToolDefs
-      const finalEffectiveToolDefs = settings.teamToolsEnabled
+      let finalEffectiveToolDefs = settings.teamToolsEnabled
         ? finalToolDefs
         : finalToolDefs.filter((t) => !TEAM_TOOL_NAMES.has(t.name))
+
+      // Plan mode: restrict to read-only + planning tools
+      const isPlanMode = useUIStore.getState().planMode
+      if (isPlanMode) {
+        finalEffectiveToolDefs = finalEffectiveToolDefs.filter((t) => PLAN_MODE_ALLOWED_TOOLS.has(t.name))
+      }
 
       // Build plugin info for system prompt — inject plugin metadata + per-plugin system prompts
       let userPrompt = settings.systemPrompt || ''
@@ -405,7 +530,8 @@ export function useChatActions() {
         workingFolder: session?.workingFolder,
         userSystemPrompt: userPrompt || undefined,
         toolDefs: finalEffectiveToolDefs,
-        language: useSettingsStore.getState().language
+        language: useSettingsStore.getState().language,
+        planMode: isPlanMode
       })
       const agentProviderConfig: ProviderConfig = {
         ...baseProviderConfig,
@@ -419,7 +545,7 @@ export function useChatActions() {
           : null
 
       const loopConfig: AgentLoopConfig = {
-        maxIterations: 20,
+        maxIterations: DEFAULT_AGENT_MAX_ITERATIONS,
         provider: agentProviderConfig,
         tools: finalEffectiveToolDefs,
         systemPrompt: agentSystemPrompt,
@@ -429,10 +555,21 @@ export function useChatActions() {
           contextCompression: {
             config: compressionConfig,
             compressFn: async (msgs) => {
+              // If session has an active plan, pin its file path so compression preserves plan context
+              let planPinnedContext: string | undefined
+              if (sessionId) {
+                const plan = usePlanStore.getState().getPlanBySession(sessionId)
+                if (plan && plan.filePath) {
+                  planPinnedContext = `[Active plan: ${plan.title} — file: ${plan.filePath}]`
+                }
+              }
               const { messages: compressed } = await compressMessages(
                 msgs,
                 agentProviderConfig, // use main model
-                abortController.signal
+                abortController.signal,
+                undefined,
+                undefined,
+                planPinnedContext
               )
               // Sync compressed messages to chat store
               if (sessionId) {
@@ -473,6 +610,8 @@ export function useChatActions() {
         Notification.requestPermission().catch(() => {})
       }
 
+      let streamDeltaBuffer: StreamDeltaBuffer | null = null
+
       try {
         const messages = useChatStore.getState().getSessionMessages(sessionId)
         const loop = runAgentLoop(
@@ -492,25 +631,49 @@ export function useChatActions() {
         )
 
         let thinkingDone = false
+        let hasThinkingDelta = false
+        streamDeltaBuffer = createStreamDeltaBuffer(sessionId!, assistantMsgId)
         for await (const event of loop) {
           if (abortController.signal.aborted) break
 
           switch (event.type) {
             case 'thinking_delta':
-              useChatStore
-                .getState()
-                .appendThinkingDelta(sessionId!, assistantMsgId, event.thinking)
+              hasThinkingDelta = true
+              streamDeltaBuffer.pushThinking(event.thinking)
               break
 
             case 'text_delta':
               if (!thinkingDone) {
+                const chunk = event.text ?? ''
+                const closeThinkTagMatch = hasThinkingDelta
+                  ? chunk.match(/<\s*\/\s*think\s*>/i)
+                  : null
+                if (closeThinkTagMatch && closeThinkTagMatch.index !== undefined) {
+                  const beforeClose = chunk.slice(0, closeThinkTagMatch.index)
+                  const afterClose = chunk.slice(
+                    closeThinkTagMatch.index + closeThinkTagMatch[0].length
+                  )
+                  if (beforeClose) {
+                    streamDeltaBuffer.pushThinking(beforeClose)
+                  }
+                  streamDeltaBuffer.flushNow()
+                  thinkingDone = true
+                  useChatStore.getState().completeThinking(sessionId!, assistantMsgId)
+                  if (afterClose) {
+                    streamDeltaBuffer.pushText(afterClose)
+                  }
+                  break
+                }
                 thinkingDone = true
+                streamDeltaBuffer.flushNow()
                 useChatStore.getState().completeThinking(sessionId!, assistantMsgId)
               }
-              useChatStore.getState().appendTextDelta(sessionId!, assistantMsgId, event.text)
+              streamDeltaBuffer.pushText(event.text)
               break
 
             case 'tool_use_streaming_start':
+              // Preserve stream order: flush any pending thinking/text before inserting tool block.
+              streamDeltaBuffer.flushNow()
               if (!thinkingDone) {
                 thinkingDone = true
                 useChatStore.getState().completeThinking(sessionId!, assistantMsgId)
@@ -533,14 +696,7 @@ export function useChatActions() {
 
             case 'tool_use_args_delta':
               // Real-time partial args update via partial-json parsing
-              useChatStore
-                .getState()
-                .updateToolUseInput(
-                  sessionId!,
-                  assistantMsgId,
-                  event.toolCallId,
-                  event.partialInput
-                )
+              streamDeltaBuffer.setToolInput(event.toolCallId, event.partialInput)
               useAgentStore.getState().updateToolCall(event.toolCallId, {
                 input: event.partialInput
               })
@@ -548,14 +704,8 @@ export function useChatActions() {
 
             case 'tool_use_generated':
               // Args fully streamed — update the existing block's input (final)
-              useChatStore
-                .getState()
-                .updateToolUseInput(
-                  sessionId!,
-                  assistantMsgId,
-                  event.toolUseBlock.id,
-                  event.toolUseBlock.input
-                )
+              streamDeltaBuffer.setToolInput(event.toolUseBlock.id, event.toolUseBlock.input)
+              streamDeltaBuffer.flushNow()
               useAgentStore.getState().updateToolCall(event.toolUseBlock.id, {
                 input: event.toolUseBlock.input
               })
@@ -587,6 +737,7 @@ export function useChatActions() {
               break
 
             case 'iteration_end':
+              streamDeltaBuffer.flushNow()
               // Reset so the next iteration's thinking block gets properly completed
               thinkingDone = false
               // When an iteration ends with tool results, append tool_result user message.
@@ -608,6 +759,7 @@ export function useChatActions() {
               break
 
             case 'message_end':
+              streamDeltaBuffer.flushNow()
               if (!thinkingDone) {
                 thinkingDone = true
                 useChatStore.getState().completeThinking(sessionId!, assistantMsgId)
@@ -629,6 +781,7 @@ export function useChatActions() {
               break
 
             case 'loop_end': {
+              streamDeltaBuffer.flushNow()
               accumulatedUsage.totalDurationMs = Date.now() - loopStartedAt
               if (requestTimings.length > 0) {
                 accumulatedUsage.requestTimings = [...requestTimings]
@@ -640,6 +793,7 @@ export function useChatActions() {
             }
 
             case 'request_debug':
+              streamDeltaBuffer.flushNow()
               if (useSettingsStore.getState().devMode && event.debugInfo) {
                 setLastDebugInfo(assistantMsgId, event.debugInfo)
               }
@@ -656,12 +810,14 @@ export function useChatActions() {
               break
 
             case 'error':
+              streamDeltaBuffer.flushNow()
               console.error('[Agent Loop Error]', event.error)
               toast.error('Agent Error', { description: event.error.message })
               break
           }
         }
       } catch (err) {
+        streamDeltaBuffer?.flushNow()
         console.error('[Agent Loop Exception]', err)
         if (!abortController.signal.aborted) {
           const errMsg = err instanceof Error ? err.message : String(err)
@@ -675,6 +831,8 @@ export function useChatActions() {
           }
         }
       } finally {
+        streamDeltaBuffer?.flushNow()
+        streamDeltaBuffer?.dispose()
         unsubSubAgent()
         agentStore.setSessionStatus(sessionId, 'completed')
         chatStore.setStreamingMessageId(sessionId, null)
@@ -731,6 +889,8 @@ export function useChatActions() {
       useAgentStore.getState().setRunning(false)
       useAgentStore.getState().abort()
     }
+    // Clear any pending AskUserQuestion promises so they don't hang
+    clearPendingQuestions()
     // Reset team auto-trigger BEFORE aborting teammates.
     // abortAllTeammates() causes each teammate's finally block to run,
     // and we must ensure the queue is paused so no new turns are triggered.
@@ -742,6 +902,7 @@ export function useChatActions() {
     const chatStore = useChatStore.getState()
     const sessionId = chatStore.activeSessionId
     if (!sessionId) return
+    await chatStore.loadSessionMessages(sessionId)
     const lastUserText = chatStore.removeLastAssistantMessage(sessionId)
     if (lastUserText) {
       // Also remove the last user message — sendMessage will re-add it
@@ -756,6 +917,7 @@ export function useChatActions() {
       const chatStore = useChatStore.getState()
       const sessionId = chatStore.activeSessionId
       if (!sessionId) return
+      await chatStore.loadSessionMessages(sessionId)
       const messages = chatStore.getSessionMessages(sessionId)
       // Find the last real user message (has text content, not just tool_result blocks)
       let editIdx = -1
@@ -789,6 +951,7 @@ export function useChatActions() {
       toast.error('无法压缩', { description: '没有活跃的会话' })
       return
     }
+    await chatStore.loadSessionMessages(sessionId)
 
     // Limitation 1: agent must not be running
     const sessionStatus = agentStore.runningSessions[sessionId]
@@ -867,6 +1030,39 @@ export function useChatActions() {
   return { sendMessage, stopStreaming, retryLastMessage, editAndResend, manualCompressContext }
 }
 
+// ── Plan Implement: programmatic message trigger ──
+
+/**
+ * Trigger plan implementation by sending a message to the agent.
+ * Called from PlanPanel "Implement" button — bypasses the input box.
+ */
+export function sendImplementPlan(planId: string): void {
+  if (!_sendMessageFn) return
+
+  const plan = usePlanStore.getState().plans[planId]
+  if (!plan) return
+
+  // 1. Mark plan as implementing
+  usePlanStore.getState().startImplementing(planId)
+
+  // 2. Exit plan mode
+  useUIStore.getState().exitPlanMode()
+
+  // 3. Switch to Steps tab
+  useUIStore.getState().setRightPanelTab('steps')
+
+  // 4. Build implementation prompt and send directly
+  const prompt = [
+    `Please implement the plan: **${plan.title}**`,
+    '',
+    plan.filePath ? `Plan file: \`${plan.filePath}\`` : '',
+    '',
+    'Read the plan file first for full details, then begin implementation step by step.',
+  ].filter(Boolean).join('\n')
+
+  _sendMessageFn(prompt)
+}
+
 /**
  * Simple chat mode: single API call with streaming text, no tools.
  */
@@ -879,6 +1075,7 @@ async function runSimpleChat(
   const provider = createProvider(config)
   const chatStore = useChatStore.getState()
   const messages = chatStore.getSessionMessages(sessionId)
+  const streamDeltaBuffer = createStreamDeltaBuffer(sessionId, assistantMsgId)
 
   try {
     const stream = provider.sendMessage(
@@ -889,21 +1086,45 @@ async function runSimpleChat(
     )
 
     let thinkingDone = false
+    let hasThinkingDelta = false
     for await (const event of stream) {
       if (signal.aborted) break
 
       switch (event.type) {
         case 'thinking_delta':
-          useChatStore.getState().appendThinkingDelta(sessionId, assistantMsgId, event.thinking!)
+          hasThinkingDelta = true
+          streamDeltaBuffer.pushThinking(event.thinking!)
           break
         case 'text_delta':
           if (!thinkingDone) {
+            const chunk = event.text ?? ''
+            const closeThinkTagMatch = hasThinkingDelta
+              ? chunk.match(/<\s*\/\s*think\s*>/i)
+              : null
+            if (closeThinkTagMatch && closeThinkTagMatch.index !== undefined) {
+              const beforeClose = chunk.slice(0, closeThinkTagMatch.index)
+              const afterClose = chunk.slice(
+                closeThinkTagMatch.index + closeThinkTagMatch[0].length
+              )
+              if (beforeClose) {
+                streamDeltaBuffer.pushThinking(beforeClose)
+              }
+              streamDeltaBuffer.flushNow()
+              thinkingDone = true
+              useChatStore.getState().completeThinking(sessionId, assistantMsgId)
+              if (afterClose) {
+                streamDeltaBuffer.pushText(afterClose)
+              }
+              break
+            }
             thinkingDone = true
+            streamDeltaBuffer.flushNow()
             useChatStore.getState().completeThinking(sessionId, assistantMsgId)
           }
-          useChatStore.getState().appendTextDelta(sessionId, assistantMsgId, event.text!)
+          streamDeltaBuffer.pushText(event.text!)
           break
         case 'message_end':
+          streamDeltaBuffer.flushNow()
           if (!thinkingDone) {
             thinkingDone = true
             useChatStore.getState().completeThinking(sessionId, assistantMsgId)
@@ -915,17 +1136,20 @@ async function runSimpleChat(
           }
           break
         case 'request_debug':
+          streamDeltaBuffer.flushNow()
           if (useSettingsStore.getState().devMode && event.debugInfo) {
             setLastDebugInfo(assistantMsgId, event.debugInfo)
           }
           break
         case 'error':
+          streamDeltaBuffer.flushNow()
           console.error('[Chat Error]', event.error)
           toast.error('Chat Error', { description: event.error?.message ?? 'Unknown error' })
           break
       }
     }
   } catch (err) {
+    streamDeltaBuffer.flushNow()
     if (!signal.aborted) {
       const errMsg = err instanceof Error ? err.message : String(err)
       console.error('[Chat Exception]', err)
@@ -938,6 +1162,8 @@ async function runSimpleChat(
       }
     }
   } finally {
+    streamDeltaBuffer.flushNow()
+    streamDeltaBuffer.dispose()
     useChatStore.getState().setStreamingMessageId(sessionId, null)
   }
 }

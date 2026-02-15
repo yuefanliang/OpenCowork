@@ -20,10 +20,9 @@ import {
 import { cn } from '@renderer/lib/utils'
 import type { ToolCallStatus } from '@renderer/lib/agent/types'
 import type { ToolResultContent } from '@renderer/lib/api/types'
-import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { MONO_FONT } from '@renderer/lib/constants'
 import { estimateTokens, formatTokens } from '@renderer/lib/format-tokens'
+import { LazySyntaxHighlighter } from './LazySyntaxHighlighter'
 
 interface ToolCallCardProps {
   name: string
@@ -84,6 +83,11 @@ export function inputSummary(name: string, input: Record<string, unknown>): stri
   if (name === 'TaskUpdate' && input.taskId) return `#${input.taskId}${input.status ? ` → ${input.status}` : ''}`
   if (name === 'TaskGet' && input.taskId) return `#${input.taskId}`
   if (name === 'TaskList') return 'list tasks'
+  if (name === 'AskUserQuestion') {
+    const qs = input.questions as Array<{ question?: string }> | undefined
+    if (qs && qs.length > 0) return String(qs[0].question ?? '').slice(0, 60)
+    return 'asking user...'
+  }
   if (name === 'Task')
     return `[${input.subagent_type ?? '?'}] ${String(input.description ?? '').slice(0, 50)}`
   const keys = Object.keys(input)
@@ -212,9 +216,8 @@ function ReadOutputBlock({
         </span>
         <CopyBtn text={rawContent} />
       </div>
-      <SyntaxHighlighter
+      <LazySyntaxHighlighter
         language={lang}
-        style={oneDark}
         showLineNumbers
         customStyle={{
           margin: 0,
@@ -228,7 +231,7 @@ function ReadOutputBlock({
         codeTagProps={{ style: { fontFamily: 'inherit' } }}
       >
         {displayed}
-      </SyntaxHighlighter>
+      </LazySyntaxHighlighter>
       {isLong && (
         <button
           onClick={() => setExpanded(!expanded)}
@@ -1202,9 +1205,8 @@ export function ToolCallCard({
                 </span>
                 <CopyBtn text={String(input.content)} />
               </div>
-              <SyntaxHighlighter
+              <LazySyntaxHighlighter
                 language={detectLang(String(input.file_path ?? input.path ?? ''))}
-                style={oneDark}
                 wrapLongLines
                 customStyle={{
                   margin: 0,
@@ -1218,7 +1220,7 @@ export function ToolCallCard({
                 codeTagProps={{ style: { fontFamily: 'inherit' } }}
               >
                 {String(input.content)}
-              </SyntaxHighlighter>
+              </LazySyntaxHighlighter>
             </div>
           )}
           {/* TaskCreate: checklist-style input */}
@@ -1294,7 +1296,8 @@ export function ToolCallCard({
               'Edit',
               'MultiEdit',
               'Write',
-              'Delete'
+              'Delete',
+              'AskUserQuestion'
             ].includes(name) &&
             (hasImageBlocks(output) ? (
               <ImageOutputBlock output={output} />

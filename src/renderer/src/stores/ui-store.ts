@@ -4,7 +4,7 @@ import { create } from 'zustand'
 
 export type AppMode = 'chat' | 'cowork' | 'code'
 
-export type RightPanelTab = 'steps' | 'team' | 'artifacts' | 'context' | 'skills' | 'files'
+export type RightPanelTab = 'steps' | 'team' | 'artifacts' | 'context' | 'skills' | 'files' | 'plan'
 
 export type PreviewSource = 'file' | 'dev-server' | 'markdown'
 
@@ -111,6 +111,17 @@ interface UIStore {
   openMarkdownPreview: (title: string, content: string) => void
   closePreviewPanel: () => void
   setPreviewViewMode: (mode: 'preview' | 'code') => void
+
+  /** Selected files in file tree panel */
+  selectedFiles: string[]
+  setSelectedFiles: (files: string[]) => void
+  toggleFileSelection: (filePath: string) => void
+  clearSelectedFiles: () => void
+
+  /** Plan mode state */
+  planMode: boolean
+  enterPlanMode: () => void
+  exitPlanMode: () => void
 }
 
 
@@ -226,5 +237,21 @@ export const useUIStore = create<UIStore>((set) => ({
   setPreviewViewMode: (mode) => set((s) => ({
     previewPanelState: s.previewPanelState ? { ...s.previewPanelState, viewMode: mode } : null,
   })),
+
+  selectedFiles: [],
+  setSelectedFiles: (files) => set({ selectedFiles: files }),
+  toggleFileSelection: (filePath) => set((s) => {
+    const isSelected = s.selectedFiles.includes(filePath)
+    return {
+      selectedFiles: isSelected
+        ? s.selectedFiles.filter(f => f !== filePath)
+        : [...s.selectedFiles, filePath]
+    }
+  }),
+  clearSelectedFiles: () => set({ selectedFiles: [] }),
+
+  planMode: false,
+  enterPlanMode: () => set({ planMode: true, rightPanelTab: 'plan', rightPanelOpen: true }),
+  exitPlanMode: () => set({ planMode: false }),
 }))
 

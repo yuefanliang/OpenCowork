@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, Loader2, Users, Bot, Link2 } from 'lucide-react'
+import { CheckCircle2, Circle, Loader2, Users, Bot, Link2, ClipboardList } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@renderer/components/ui/badge'
 import { Separator } from '@renderer/components/ui/separator'
@@ -6,6 +6,7 @@ import { useTaskStore, type TaskItem } from '@renderer/stores/task-store'
 import { useTeamStore } from '@renderer/stores/team-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useChatStore } from '@renderer/stores/chat-store'
+import { usePlanStore } from '@renderer/stores/plan-store'
 import { cn } from '@renderer/lib/utils'
 import type { TeamTask } from '@renderer/lib/agent/teams/types'
 
@@ -29,8 +30,17 @@ export function StepsPanel(): React.JSX.Element {
   const activeSessionId = useChatStore((s) => s.activeSessionId)
   const isRunning = useAgentStore((s) => activeSessionId ? s.runningSessions[activeSessionId] === 'running' : false)
 
-  const total = todos.length
-  const completed = todos.filter((t) => t.status === 'completed').length
+  const plan = usePlanStore((s) => {
+    if (!activeSessionId) return undefined
+    return Object.values(s.plans).find((p) => p.sessionId === activeSessionId)
+  })
+
+  const planTasks = plan ? todos.filter((t) => t.planId === plan.id) : []
+  const standaloneTasks = plan ? todos.filter((t) => !t.planId) : todos
+  const displayTasks = plan ? planTasks : todos
+
+  const total = displayTasks.length
+  const completed = displayTasks.filter((t) => t.status === 'completed').length
   const progress = {
     total,
     completed,
@@ -53,10 +63,42 @@ export function StepsPanel(): React.JSX.Element {
 
   return (
     <div className="space-y-4">
-      {todos.length > 0 && (
+      {/* Plan-linked tasks */}
+      {plan && planTasks.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center rounded-md bg-violet-500/10 p-1">
+              <ClipboardList className="size-3.5 text-violet-500" />
+            </div>
+            <span className="text-xs font-medium text-violet-600 dark:text-violet-400 truncate">
+              {plan.title}
+            </span>
+            <Badge variant="secondary" className="text-[9px] h-4 px-1">
+              {completed}/{total}
+            </Badge>
+          </div>
+          <TodoList todos={planTasks} progress={progress} isRunning={isRunning && teamTasks.length === 0} />
+        </div>
+      )}
+
+      {/* Standalone tasks (not linked to plan) */}
+      {standaloneTasks.length > 0 && (
+        <>
+          {plan && planTasks.length > 0 && <Separator />}
+          <TodoList todos={standaloneTasks} progress={{
+            total: standaloneTasks.length,
+            completed: standaloneTasks.filter((t) => t.status === 'completed').length,
+            percentage: standaloneTasks.length === 0 ? 0 : Math.round((standaloneTasks.filter((t) => t.status === 'completed').length / standaloneTasks.length) * 100),
+          }} isRunning={isRunning && teamTasks.length === 0} />
+        </>
+      )}
+
+      {/* No plan: show all tasks as before */}
+      {!plan && todos.length > 0 && standaloneTasks.length === 0 && (
         <TodoList todos={todos} progress={progress} isRunning={isRunning && teamTasks.length === 0} />
       )}
-      {todos.length > 0 && teamTasks.length > 0 && <Separator />}
+
+      {(planTasks.length > 0 || standaloneTasks.length > 0 || todos.length > 0) && teamTasks.length > 0 && <Separator />}
       {teamTasks.length > 0 && (
         <TeamTaskList
           tasks={teamTasks}

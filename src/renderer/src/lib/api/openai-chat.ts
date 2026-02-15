@@ -226,7 +226,7 @@ class OpenAIChatProvider implements APIProvider {
 
       const blocks = m.content as ContentBlock[]
 
-      // Handle user messages with images → multi-part content
+      // Handle user messages with images or text-only ContentBlock[]
       if (m.role === 'user') {
         const hasImages = blocks.some((b) => b.type === 'image')
         if (hasImages) {
@@ -241,6 +241,13 @@ class OpenAIChatProvider implements APIProvider {
               parts.push({ type: 'text', text: b.text })
             }
           }
+          formatted.push({ role: 'user', content: parts })
+          continue
+        }
+        // Text-only ContentBlock[] (e.g., system-remind dynamic context injection)
+        const userTextBlocks = blocks.filter((b) => b.type === 'text')
+        if (userTextBlocks.length > 0) {
+          const parts = userTextBlocks.map((b) => ({ type: 'text', text: (b as Extract<ContentBlock, { type: 'text' }>).text }))
           formatted.push({ role: 'user', content: parts })
           continue
         }

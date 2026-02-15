@@ -5,6 +5,7 @@ export const siliconflowPreset: BuiltinProviderPreset = {
   name: '硅基流动',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.siliconflow.cn/v1',
+  homepage: 'https://siliconflow.cn',
   defaultModels: [
     // ── DeepSeek ──
     { id: 'deepseek-ai/DeepSeek-V3.2', name: 'DeepSeek V3.2', icon: 'deepseek', enabled: true, contextLength: 164_000, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.27, outputPrice: 0.42, supportsThinking: true, thinkingConfig: { bodyParams: { enable_thinking: true } } },

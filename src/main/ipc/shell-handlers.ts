@@ -18,10 +18,14 @@ function sanitizeOutput(raw: string, maxLen: number): string {
 }
 
 export function registerShellHandlers(): void {
+  const runningShellProcesses = new Map<string, ReturnType<typeof spawn>>()
+
   ipcMain.handle(
     'shell:exec',
     async (_event, args: { command: string; timeout?: number; cwd?: string; execId?: string }) => {
-      const timeout = Math.min(args.timeout ?? 120000, 600000)
+      const DEFAULT_TIMEOUT = 600_000
+      const MAX_TIMEOUT = 3_600_000
+      const timeout = Math.min(args.timeout ?? DEFAULT_TIMEOUT, MAX_TIMEOUT)
       const execId = args.execId
 
       // On Windows, default cmd.exe code page (e.g. CP936) != UTF-8.
@@ -48,6 +52,10 @@ export function registerShellHandlers(): void {
           },
         })
 
+        if (execId) {
+          runningShellProcesses.set(execId, child)
+        }
+
         const sendChunk = (chunk: string): void => {
           if (!execId) return
           const win = BrowserWindow.getAllWindows()[0]
@@ -69,6 +77,7 @@ export function registerShellHandlers(): void {
         })
 
         child.on('close', (code) => {
+          if (execId) runningShellProcesses.delete(execId)
           resolve({
             exitCode: killed ? 1 : (code ?? 0),
             stdout: sanitizeOutput(stdout, 50000),
@@ -77,6 +86,7 @@ export function registerShellHandlers(): void {
         })
 
         child.on('error', (err) => {
+          if (execId) runningShellProcesses.delete(execId)
           resolve({
             exitCode: 1,
             stdout: sanitizeOutput(stdout, 50000),
@@ -95,6 +105,17 @@ export function registerShellHandlers(): void {
       })
     }
   )
+
+  ipcMain.on('shell:abort', (_event, data: { execId?: string }) => {
+    const execId = data?.execId
+    if (!execId) return
+    const child = runningShellProcesses.get(execId)
+    if (!child) return
+    if (child.exitCode === null) {
+      child.kill('SIGTERM')
+    }
+    runningShellProcesses.delete(execId)
+  })
 
   ipcMain.handle('shell:openPath', async (_event, folderPath: string) => {
     return shell.openPath(folderPath)

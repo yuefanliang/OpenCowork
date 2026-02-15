@@ -1,9 +1,8 @@
 import { useState, useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import appIconUrl from '../../../../../resources/icon.png'
-import { nanoid } from 'nanoid'
 import { formatTokens } from '@renderer/lib/format-tokens'
-import { Plus, MessageSquare, Trash2, Eraser, Search, Briefcase, Code2, Download, Copy, X, Pin, PinOff, Pencil, Upload, Settings, Loader2, CheckCircle2 } from 'lucide-react'
+import { Plus, MessageSquare, Trash2, Eraser, Search, Briefcase, Code2, Download, Copy, X, Pin, PinOff, Pencil, Settings, Loader2, CheckCircle2 } from 'lucide-react'
 import { DynamicIcon } from 'lucide-react/dynamic'
 import {
   Sidebar,
@@ -56,9 +55,51 @@ const modeIcons: Record<SessionMode, React.ReactNode> = {
   code: <Code2 className="size-4" />,
 }
 
+interface SessionListItem {
+  id: string
+  title: string
+  icon?: string
+  mode: SessionMode
+  createdAt: number
+  updatedAt: number
+  pinned?: boolean
+  messageCount: number
+}
+
 export function AppSidebar(): React.JSX.Element {
   const { t } = useTranslation('layout')
-  const sessions = useChatStore((s) => s.sessions)
+  const sessionDigest = useChatStore(
+    (s) =>
+      s.sessions
+        .map((session) =>
+          [
+            session.id,
+            session.title,
+            session.icon ?? '',
+            session.mode,
+            session.createdAt,
+            session.updatedAt,
+            session.pinned ? 1 : 0,
+            session.messageCount,
+            session.messagesLoaded ? 1 : 0,
+          ].join('|')
+        )
+        .join('¦')
+  )
+  const sessions = useMemo<SessionListItem[]>(
+    () =>
+      useChatStore.getState().sessions.map((session) => ({
+        id: session.id,
+        title: session.title,
+        icon: session.icon,
+        mode: session.mode,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+        pinned: session.pinned,
+        messageCount: session.messageCount,
+      })),
+    [sessionDigest]
+  )
   const activeSessionId = useChatStore((s) => s.activeSessionId)
   const createSession = useChatStore((s) => s.createSession)
   const deleteSession = useChatStore((s) => s.deleteSession)
@@ -78,6 +119,10 @@ export function AppSidebar(): React.JSX.Element {
   const editRef = useRef<HTMLInputElement>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string; msgCount: number } | null>(null)
   const appVersion = packageJson.version ?? '0.0.0'
+  const getSessionSnapshot = useCallback(
+    (sessionId: string) => useChatStore.getState().sessions.find((session) => session.id === sessionId),
+    []
+  )
 
   // Detect if the delete target has running tasks
   const deleteTargetRunningInfo = useMemo(() => {
@@ -92,7 +137,7 @@ export function AppSidebar(): React.JSX.Element {
 
   const confirmDelete = useCallback(() => {
     if (!deleteTarget) return
-    const session = sessions.find((s) => s.id === deleteTarget.id)
+    const session = getSessionSnapshot(deleteTarget.id)
     if (!session) { setDeleteTarget(null); return }
     // Abort running tasks before deleting
     if (runningSessions[session.id] === 'running') {
@@ -105,15 +150,16 @@ export function AppSidebar(): React.JSX.Element {
       action: { label: t('action.undo', { ns: 'common' }), onClick: () => useChatStore.getState().restoreSession(snapshot) },
       duration: 5000,
     })
-  }, [deleteTarget, sessions, deleteSession, runningSessions, t])
+  }, [deleteTarget, deleteSession, getSessionSnapshot, runningSessions, t])
 
 
   const handleNewSession = (): void => {
     createSession(mode)
   }
 
-  const handleExport = (sessionId: string): void => {
-    const session = sessions.find((s) => s.id === sessionId)
+  const handleExport = async (sessionId: string): Promise<void> => {
+    await useChatStore.getState().loadSessionMessages(sessionId)
+    const session = getSessionSnapshot(sessionId)
     if (!session) return
     const md = sessionToMarkdown(session)
     const filename = session.title.replace(/[^a-zA-Z0-9-_ ]/g, '').slice(0, 50).trim() || 'conversation'
@@ -135,16 +181,51 @@ export function AppSidebar(): React.JSX.Element {
       return b.createdAt - a.createdAt
     })
 
-  const filtered = search.trim()
-    ? sorted.filter((s) => {
-        const q = search.toLowerCase()
-        if (s.title.toLowerCase().includes(q)) return true
-        if (s.mode.toLowerCase().includes(q)) return true
-        return s.messages.some((m) => {
-          const text = typeof m.content === 'string' ? m.content : ''
-          return text.toLowerCase().includes(q)
-        })
-      })
+  const searchQuery = search.trim().toLowerCase()
+  const contentSearchMeta = useMemo(() => {
+    const matchedIds = new Set<string>()
+    const snippetBySessionId = new Map<string, string>()
+    if (!searchQuery) return { matchedIds, snippetBySessionId }
+
+    const rawSessions = useChatStore.getState().sessions
+    for (const session of rawSessions) {
+      if (session.title.toLowerCase().includes(searchQuery) || session.mode.toLowerCase().includes(searchQuery)) {
+        continue
+      }
+      if (!session.messagesLoaded) continue
+      for (const message of session.messages) {
+        const text =
+          typeof message.content === 'string'
+            ? message.content
+            : Array.isArray(message.content)
+              ? message.content
+                .filter((block) => block.type === 'text')
+                .map((block) => block.text)
+                .join('\n')
+              : ''
+        const lower = text.toLowerCase()
+        const idx = lower.indexOf(searchQuery)
+        if (idx === -1) continue
+        matchedIds.add(session.id)
+        const start = Math.max(0, idx - 20)
+        const snippet =
+          (start > 0 ? '...' : '') +
+          text.slice(start, idx + searchQuery.length + 30).replace(/\n/g, ' ') +
+          (idx + searchQuery.length + 30 < text.length ? '...' : '')
+        snippetBySessionId.set(session.id, snippet)
+        break
+      }
+    }
+
+    return { matchedIds, snippetBySessionId }
+  }, [searchQuery, sessions])
+
+  const filtered = searchQuery
+    ? sorted.filter((session) => {
+      if (session.title.toLowerCase().includes(searchQuery)) return true
+      if (session.mode.toLowerCase().includes(searchQuery)) return true
+      return contentSearchMeta.matchedIds.has(session.id)
+    })
     : sorted
 
   // Group by date
@@ -190,16 +271,14 @@ export function AppSidebar(): React.JSX.Element {
               <span className="ml-1 text-muted-foreground">({sessions.length})</span>
             )}
           </SidebarGroupLabel>
-          <SidebarGroupAction onClick={handleNewSession} title={t('sidebar.newConversation')}>
-            <Plus className="size-4" />
-          </SidebarGroupAction>
-          {sessions.some((s) => s.messages.length > 0) && (
+          {sessions.some((s) => s.messageCount > 0) && (
             <SidebarGroupAction
               className="right-8"
               onClick={() => {
-                const withMessages = sessions.filter((s) => s.messages.length > 0)
-                withMessages.forEach((s) => handleExport(s.id))
-                toast.success(t('sidebar_toast.exported'))
+                const withMessages = sessions.filter((s) => s.messageCount > 0)
+                Promise.all(withMessages.map((s) => handleExport(s.id)))
+                  .then(() => toast.success(t('sidebar_toast.exported')))
+                  .catch(() => {})
               }}
               title={t('sidebar.exportAll')}
             >
@@ -207,6 +286,18 @@ export function AppSidebar(): React.JSX.Element {
             </SidebarGroupAction>
           )}
           <SidebarGroupContent>
+            <div className="flex gap-1.5 px-2 pt-1 pb-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 gap-2 rounded-lg group-data-[collapsible=icon]:h-9 group-data-[collapsible=icon]:w-9 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:p-0"
+                onClick={handleNewSession}
+                title={t('sidebar.newChat')}
+              >
+                <Plus className="size-4" />
+                <span className="text-xs font-medium group-data-[collapsible=icon]:hidden">{t('sidebar.newChat')}</span>
+              </Button>
+            </div>
             {sessions.length > 3 && (
               <div className="px-2 pb-1.5 group-data-[collapsible=icon]:hidden">
                 <div className="relative">
@@ -269,7 +360,7 @@ export function AppSidebar(): React.JSX.Element {
                                 setEditTitle(session.title)
                                 setTimeout(() => editRef.current?.select(), 0)
                               }}
-                              tooltip={`${session.title}\n${session.mode} · ${(() => { const m = Math.floor((Date.now() - session.updatedAt) / 60000); if (m < 1) return 'just now'; if (m < 60) return `${m}m ago`; const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`; return `${Math.floor(h / 24)}d ago`; })()} · ${session.messages.length} msgs${session.pinned ? ' · pinned' : ''}`}
+                              tooltip={`${session.title}\n${session.mode} · ${(() => { const m = Math.floor((Date.now() - session.updatedAt) / 60000); if (m < 1) return 'just now'; if (m < 60) return `${m}m ago`; const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`; return `${Math.floor(h / 24)}d ago`; })()} · ${session.messageCount} msgs${session.pinned ? ' · pinned' : ''}`}
                             >
                               {session.pinned ? <Pin className="size-3 shrink-0 text-muted-foreground/50" /> : session.icon ? <DynamicIcon name={session.icon as never} className="size-4 shrink-0" /> : modeIcons[session.mode]}
                               {editingId === session.id ? (
@@ -295,15 +386,11 @@ export function AppSidebar(): React.JSX.Element {
                               ) : (
                                 <div className="flex flex-col min-w-0 flex-1">
                                   <span className="truncate">{session.title}</span>
-                                  {search.trim() && !session.title.toLowerCase().includes(search.toLowerCase()) && (() => {
-                                    const q = search.toLowerCase()
-                                    const match = session.messages.find((m) => typeof m.content === 'string' && m.content.toLowerCase().includes(q))
-                                    if (!match || typeof match.content !== 'string') return null
-                                    const idx = match.content.toLowerCase().indexOf(q)
-                                    const start = Math.max(0, idx - 20)
-                                    const snippet = (start > 0 ? '...' : '') + match.content.slice(start, idx + q.length + 30).replace(/\n/g, ' ') + (idx + q.length + 30 < match.content.length ? '...' : '')
-                                    return <span className="truncate text-[9px] text-muted-foreground/40">{snippet}</span>
-                                  })()}
+                                  {searchQuery && !session.title.toLowerCase().includes(searchQuery) && contentSearchMeta.snippetBySessionId.get(session.id) && (
+                                    <span className="truncate text-[9px] text-muted-foreground/40">
+                                      {contentSearchMeta.snippetBySessionId.get(session.id)}
+                                    </span>
+                                  )}
                                 </div>
                               )}
                               {editingId !== session.id && (
@@ -320,8 +407,8 @@ export function AppSidebar(): React.JSX.Element {
                                   {session.mode !== mode && (
                                     <span className="rounded bg-muted px-1 py-px text-[8px] uppercase text-muted-foreground/40">{session.mode}</span>
                                   )}
-                                  {session.messages.length > 0 && (
-                                    <span className="text-[10px] text-muted-foreground/40">{session.messages.length}</span>
+                                  {session.messageCount > 0 && (
+                                    <span className="text-[10px] text-muted-foreground/40">{session.messageCount}</span>
                                   )}
                                 </span>
                               )}
@@ -333,12 +420,13 @@ export function AppSidebar(): React.JSX.Element {
                                 const hasRunning = runningSessions[session.id] === 'running'
                                   || Object.values(activeSubAgents).some((sa) => sa.sessionId === session.id)
                                   || activeTeam?.sessionId === session.id
-                                if (session.messages.length > 0 || hasRunning) {
-                                  setDeleteTarget({ id: session.id, title: session.title, msgCount: session.messages.length })
+                                if (session.messageCount > 0 || hasRunning) {
+                                  setDeleteTarget({ id: session.id, title: session.title, msgCount: session.messageCount })
                                   return
                                 }
-                                const snapshot = JSON.parse(JSON.stringify(session))
-                                deleteSession(session.id)
+                                const snapshot = getSessionSnapshot(session.id)
+                                if (!snapshot) return
+                                deleteSession(snapshot.id)
                                 toast.success(t('sidebar_toast.sessionDeleted'), {
                                   action: { label: t('action.undo', { ns: 'common' }), onClick: () => useChatStore.getState().restoreSession(snapshot) },
                                   duration: 5000,
@@ -361,14 +449,20 @@ export function AppSidebar(): React.JSX.Element {
                             <Pencil className="size-4" />
                             {t('action.rename', { ns: 'common' })}
                           </ContextMenuItem>
-                          {session.messages.length > 0 && (
+                          {session.messageCount > 0 && (
                             <>
-                              <ContextMenuItem onClick={() => { handleExport(session.id); toast.success(t('sidebar_toast.exportedOne')) }}>
+                              <ContextMenuItem onClick={async () => {
+                                await handleExport(session.id)
+                                toast.success(t('sidebar_toast.exportedOne'))
+                              }}>
                                 <Download className="size-4" />
                                 {t('sidebar.exportAsMarkdown')}
                               </ContextMenuItem>
-                              <ContextMenuItem onClick={() => {
-                                const json = JSON.stringify(session, null, 2)
+                              <ContextMenuItem onClick={async () => {
+                                await useChatStore.getState().loadSessionMessages(session.id)
+                                const snapshot = getSessionSnapshot(session.id)
+                                if (!snapshot) return
+                                const json = JSON.stringify(snapshot, null, 2)
                                 const blob = new Blob([json], { type: 'application/json' })
                                 const url = URL.createObjectURL(blob)
                                 const a = document.createElement('a')
@@ -419,12 +513,13 @@ export function AppSidebar(): React.JSX.Element {
                             const hasRunning = runningSessions[session.id] === 'running'
                               || Object.values(activeSubAgents).some((sa) => sa.sessionId === session.id)
                               || activeTeam?.sessionId === session.id
-                            if (session.messages.length > 0 || hasRunning) {
-                              setDeleteTarget({ id: session.id, title: session.title, msgCount: session.messages.length })
+                            if (session.messageCount > 0 || hasRunning) {
+                              setDeleteTarget({ id: session.id, title: session.title, msgCount: session.messageCount })
                               return
                             }
-                            const snapshot = JSON.parse(JSON.stringify(session))
-                            deleteSession(session.id)
+                            const snapshot = getSessionSnapshot(session.id)
+                            if (!snapshot) return
+                            deleteSession(snapshot.id)
                             toast.success(t('sidebar_toast.sessionDeleted'), {
                               action: { label: t('action.undo', { ns: 'common' }), onClick: () => useChatStore.getState().restoreSession(snapshot) },
                               duration: 5000,
@@ -446,52 +541,6 @@ export function AppSidebar(): React.JSX.Element {
 
       <SidebarFooter>
         <div className="flex flex-col gap-1.5 group-data-[collapsible=icon]:items-center">
-          <div className="flex gap-1.5 group-data-[collapsible=icon]:justify-center">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1 gap-2 rounded-lg group-data-[collapsible=icon]:size-10 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:shadow-none transition-all duration-200 hover:shadow-sm"
-              onClick={handleNewSession}
-              title={t('sidebar.newChat')}
-            >
-              <Plus className="size-4" />
-              <span className="group-data-[collapsible=icon]:hidden">{t('sidebar.newChat')}</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="size-8 shrink-0 p-0 group-data-[collapsible=icon]:hidden"
-              title={t('sidebar.importSession')}
-              onClick={() => {
-                const input = document.createElement('input')
-                input.type = 'file'
-                input.accept = '.json'
-                input.onchange = () => {
-                  const file = input.files?.[0]
-                  if (!file) return
-                  const reader = new FileReader()
-                  reader.onload = () => {
-                    try {
-                      const data = JSON.parse(reader.result as string)
-                      if (data.id && data.messages && data.title) {
-                        data.id = nanoid()
-                        useChatStore.getState().restoreSession(data)
-                        toast.success(t('sidebar_toast.imported', { count: 1 }))
-                      } else {
-                        toast.error(t('sidebar_toast.invalidFile'))
-                      }
-                    } catch {
-                      toast.error(t('sidebar_toast.failedParse'))
-                    }
-                  }
-                  reader.readAsText(file)
-                }
-                input.click()
-              }}
-            >
-              <Upload className="size-3.5" />
-            </Button>
-          </div>
           <Button
             variant="ghost"
             size="sm"
@@ -507,9 +556,10 @@ export function AppSidebar(): React.JSX.Element {
           </p>
         </div>
         <p className="text-center text-[10px] text-muted-foreground/25 group-data-[collapsible=icon]:hidden">
-          {sessions.length} {t('sidebar.sessions')} · {sessions.reduce((a, s) => a + s.messages.length, 0)} {t('sidebar.msgs')}
+          {sessions.length} {t('sidebar.sessions')} · {sessions.reduce((sum, session) => sum + session.messageCount, 0)} {t('sidebar.msgs')}
           {(() => {
-            let total = sessions.reduce((a, s) => a + s.messages.reduce((b, m) => b + (m.usage ? m.usage.inputTokens + m.usage.outputTokens : 0), 0), 0)
+            const rawSessions = useChatStore.getState().sessions
+            let total = rawSessions.reduce((a, s) => a + s.messages.reduce((b, m) => b + (m.usage ? m.usage.inputTokens + m.usage.outputTokens : 0), 0), 0)
             // Include team member token usage
             const teamState = useTeamStore.getState()
             const allMembers = [

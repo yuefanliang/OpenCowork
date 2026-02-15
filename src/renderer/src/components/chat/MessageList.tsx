@@ -7,8 +7,8 @@ import { MessageItem } from './MessageItem'
 import { MessageSquare, Briefcase, Code2, RefreshCw, ArrowDown, ClipboardCopy, Check, ImageDown, Loader2 } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { sessionToMarkdown } from '@renderer/lib/utils/export-chat'
-import { toPng } from 'html-to-image'
-import type { ToolResultContent } from '@renderer/lib/api/types'
+import type { ContentBlock, ToolResultContent, UnifiedMessage } from '@renderer/lib/api/types'
+import type { ToolCallState } from '@renderer/lib/agent/types'
 import { toast } from 'sonner'
 import appIconUrl from '../../../../../resources/icon.png'
 
@@ -35,9 +35,83 @@ interface MessageListProps {
   onEditUserMessage?: (newContent: string) => void
 }
 
+interface RenderableMessage {
+  message: UnifiedMessage
+  isLastUserMessage: boolean
+  toolResults?: Map<string, { content: ToolResultContent; isError?: boolean }>
+}
+
+const EMPTY_MESSAGES: UnifiedMessage[] = []
+const INITIAL_VISIBLE_MESSAGE_COUNT = 120
+const LOAD_MORE_MESSAGE_STEP = 80
+
+function isToolResultOnlyUserMessage(message: UnifiedMessage): boolean {
+  return (
+    message.role === 'user' &&
+    Array.isArray(message.content) &&
+    message.content.every((block) => block.type === 'tool_result')
+  )
+}
+
+function isRealUserMessage(message: UnifiedMessage): boolean {
+  if (message.role !== 'user' || message.source) return false
+  if (typeof message.content === 'string') return true
+  return message.content.some((block) => block.type === 'text')
+}
+
+function collectToolResults(blocks: ContentBlock[], target: Map<string, { content: ToolResultContent; isError?: boolean }>): void {
+  for (const block of blocks) {
+    if (block.type === 'tool_result') {
+      target.set(block.toolUseId, { content: block.content, isError: block.isError })
+    }
+  }
+}
+
+function buildRenderableMessages(messages: UnifiedMessage[], streamingMessageId: string | null): RenderableMessage[] {
+  let lastRealUserIndex = -1
+  if (!streamingMessageId) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (isRealUserMessage(messages[i])) {
+        lastRealUserIndex = i
+        break
+      }
+    }
+  }
+
+  const assistantToolResults = new Map<number, Map<string, { content: ToolResultContent; isError?: boolean }>>()
+  let trailingToolResults: Map<string, { content: ToolResultContent; isError?: boolean }> | undefined
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (isToolResultOnlyUserMessage(message)) {
+      if (!trailingToolResults) trailingToolResults = new Map()
+      collectToolResults(message.content as ContentBlock[], trailingToolResults)
+      continue
+    }
+
+    if (message.role === 'assistant' && Array.isArray(message.content) && trailingToolResults && trailingToolResults.size > 0) {
+      assistantToolResults.set(i, trailingToolResults)
+    }
+    trailingToolResults = undefined
+  }
+
+  const result: RenderableMessage[] = []
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i]
+    if (isToolResultOnlyUserMessage(message)) continue
+
+    result.push({
+      message,
+      isLastUserMessage: i === lastRealUserIndex,
+      toolResults: assistantToolResults.get(i),
+    })
+  }
+  return result
+}
+
 export function MessageList({ onRetry, onEditUserMessage }: MessageListProps): React.JSX.Element {
   const { t } = useTranslation('chat')
-  const sessions = useChatStore((s) => s.sessions)
+  const activeSession = useChatStore((s) => s.sessions.find((session) => session.id === s.activeSessionId))
   const activeSessionId = useChatStore((s) => s.activeSessionId)
   const streamingMessageId = useChatStore((s) => s.streamingMessageId)
   const mode = useUIStore((s) => s.mode)
@@ -47,24 +121,48 @@ export function MessageList({ onRetry, onEditUserMessage }: MessageListProps): R
   const isStreamingRef = React.useRef(false)
   isStreamingRef.current = !!streamingMessageId
 
-  const activeSession = sessions.find((s) => s.id === activeSessionId)
-  const messages = activeSession?.messages ?? []
+  const messages = activeSession?.messages ?? EMPTY_MESSAGES
+  React.useEffect(() => {
+    if (!activeSessionId) return
+    void useChatStore.getState().loadSessionMessages(activeSessionId)
+  }, [activeSessionId])
+
+  const renderableMessages = React.useMemo(
+    () => buildRenderableMessages(messages, streamingMessageId),
+    [messages, streamingMessageId]
+  )
+  const [visibleCount, setVisibleCount] = React.useState(INITIAL_VISIBLE_MESSAGE_COUNT)
+  const visibleRenderableMessages = React.useMemo(() => {
+    const startIndex = Math.max(0, renderableMessages.length - visibleCount)
+    return renderableMessages.slice(startIndex)
+  }, [renderableMessages, visibleCount])
+  const hiddenMessageCount = Math.max(0, renderableMessages.length - visibleRenderableMessages.length)
   const [copiedAll, setCopiedAll] = React.useState(false)
   const [exporting, setExporting] = React.useState(false)
   const contentRef = React.useRef<HTMLDivElement>(null)
 
-  // Derive a scroll trigger from streaming content length
-  const streamingMsg = streamingMessageId ? messages.find((m) => m.id === streamingMessageId) : null
-  const streamContentLen = streamingMsg
-    ? typeof streamingMsg.content === 'string'
-      ? streamingMsg.content.length
-      : JSON.stringify(streamingMsg.content).length
-    : 0
+  React.useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE_MESSAGE_COUNT)
+  }, [activeSessionId])
+
+  // Use content reference as a lightweight streaming update signal (avoid JSON.stringify on large blocks)
+  const streamingMsg = React.useMemo(
+    () => (streamingMessageId ? messages.find((message) => message.id === streamingMessageId) ?? null : null),
+    [messages, streamingMessageId]
+  )
+  const streamContentSignal = streamingMsg?.content
 
   // Track tool call state changes as additional scroll trigger
   // (tool cards render/expand during streaming → running → completed transitions)
   const executedToolCalls = useAgentStore((s) => s.executedToolCalls)
   const pendingToolCalls = useAgentStore((s) => s.pendingToolCalls)
+  const liveToolCallMap = React.useMemo<Map<string, ToolCallState> | null>(() => {
+    if (!streamingMessageId) return null
+    const map = new Map<string, ToolCallState>()
+    for (const toolCall of executedToolCalls) map.set(toolCall.id, toolCall)
+    for (const toolCall of pendingToolCalls) map.set(toolCall.id, toolCall)
+    return map
+  }, [streamingMessageId, executedToolCalls, pendingToolCalls])
   const toolCallFingerprint = React.useMemo(() => {
     const parts: string[] = []
     for (const tc of executedToolCalls) parts.push(`${tc.id}:${tc.status}`)
@@ -101,7 +199,7 @@ export function MessageList({ onRetry, onEditUserMessage }: MessageListProps): R
     } else {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [messages.length, streamingMessageId, streamContentLen, toolCallFingerprint, isAtBottom])
+  }, [messages.length, streamingMessageId, streamContentSignal, toolCallFingerprint, isAtBottom])
 
   // Follow DOM height changes during streaming (covers typewriter-driven growth
   // that happens between store updates and is not caught by streamContentLen).
@@ -131,6 +229,15 @@ export function MessageList({ onRetry, onEditUserMessage }: MessageListProps): R
     const container = scrollContainerRef.current
     if (container) container.scrollTop = container.scrollHeight
   }, [])
+
+  if (activeSession && !activeSession.messagesLoaded && activeSession.messageCount > 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground/70">
+        <Loader2 className="size-4 animate-spin" />
+        <span>{t('common.loading', { ns: 'common', defaultValue: 'Loading...' })}</span>
+      </div>
+    )
+  }
 
   if (messages.length === 0) {
     const hint = modeHints[mode]
@@ -253,6 +360,7 @@ export function MessageList({ onRetry, onEditUserMessage }: MessageListProps): R
 
       const bgRaw = getComputedStyle(document.documentElement).getPropertyValue('--background').trim()
       const bgColor = bgRaw ? `hsl(${bgRaw})` : '#ffffff'
+      const { toPng } = await import('html-to-image')
       const dataUrl = await toPng(node, { backgroundColor: bgColor, pixelRatio: 2 })
 
       const base64 = dataUrl.split(',')[1]
@@ -299,45 +407,26 @@ export function MessageList({ onRetry, onEditUserMessage }: MessageListProps): R
       )}
       <div ref={scrollContainerRef} className="absolute inset-0 overflow-y-auto">
         <div ref={contentRef} className="mx-auto max-w-3xl space-y-6 p-4 overflow-hidden">
-          {messages.map((msg, idx) => {
-            // Hide intermediate user messages that only contain tool_result blocks
-            // (they are API-level responses, not real user input — output already shown in ToolCallCard)
-            if (msg.role === 'user' && Array.isArray(msg.content)) {
-              const hasOnlyToolResults = msg.content.every((b) => b.type === 'tool_result')
-              if (hasOnlyToolResults) return null
-            }
-            // Check if this is the last *real* user message (exclude tool_result-only and team notification messages)
-            const isRealUserMsg = (m: typeof msg): boolean =>
-              m.role === 'user' && !m.source && (typeof m.content === 'string' || m.content.some((b) => b.type === 'text'))
-            const isLastUser = !streamingMessageId && isRealUserMsg(msg) &&
-              !messages.slice(idx + 1).some((m) => isRealUserMsg(m))
-            // Build tool results map for assistant messages.
-            // Scan ALL consecutive tool_result-only user messages after this assistant message,
-            // because multi-iteration agent loops append to a single assistant message but
-            // create separate user messages for each iteration's tool results.
-            let toolResults: Map<string, { content: ToolResultContent; isError?: boolean }> | undefined
-            if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-              for (let i = idx + 1; i < messages.length; i++) {
-                const nextMsg = messages[i]
-                if (nextMsg.role !== 'user' || !Array.isArray(nextMsg.content)) break
-                const hasOnlyToolResults = nextMsg.content.every((b) => b.type === 'tool_result')
-                if (!hasOnlyToolResults) break
-                if (!toolResults) toolResults = new Map()
-                for (const block of nextMsg.content) {
-                  if (block.type === 'tool_result') {
-                    toolResults.set(block.toolUseId, { content: block.content, isError: block.isError })
-                  }
-                }
-              }
-            }
+          {hiddenMessageCount > 0 && (
+            <div className="flex justify-center">
+              <button
+                className="rounded-md border px-3 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+                onClick={() => setVisibleCount((prev) => prev + LOAD_MORE_MESSAGE_STEP)}
+              >
+                {t('messageList.loadMoreMessages', { defaultValue: '加载更早消息' })} ({hiddenMessageCount})
+              </button>
+            </div>
+          )}
+          {visibleRenderableMessages.map(({ message, isLastUserMessage, toolResults }) => {
             return (
               <MessageItem
-                key={msg.id}
-                message={msg}
-                isStreaming={msg.id === streamingMessageId}
-                isLastUserMessage={isLastUser}
+                key={message.id}
+                message={message}
+                isStreaming={message.id === streamingMessageId}
+                isLastUserMessage={isLastUserMessage}
                 onEditUserMessage={onEditUserMessage}
                 toolResults={toolResults}
+                liveToolCallMap={message.id === streamingMessageId ? liveToolCallMap : null}
               />
             )
           })}

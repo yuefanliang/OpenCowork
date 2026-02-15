@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, Code2, Eye, RefreshCw, Save, Copy, Check, Bot } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
@@ -87,6 +87,44 @@ export function PreviewPanel(): React.JSX.Element {
     }
   }, [state?.markdownContent])
 
+  // --- Resize logic ---
+  const MIN_WIDTH = 320
+  const MAX_WIDTH = 960
+  const DEFAULT_WIDTH = 480
+  const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH)
+  const draggingRef = useRef(false)
+  const startXRef = useRef(0)
+  const startWidthRef = useRef(DEFAULT_WIDTH)
+  const [isDragging, setIsDragging] = useState(false)
+
+  const onResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    draggingRef.current = true
+    startXRef.current = e.clientX
+    startWidthRef.current = panelWidth
+    setIsDragging(true)
+  }, [panelWidth])
+
+  useEffect(() => {
+    if (!isDragging) return
+    const onMouseMove = (e: MouseEvent): void => {
+      if (!draggingRef.current) return
+      const delta = startXRef.current - e.clientX
+      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidthRef.current + delta))
+      setPanelWidth(newWidth)
+    }
+    const onMouseUp = (): void => {
+      draggingRef.current = false
+      setIsDragging(false)
+    }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [isDragging])
+
   if (!state) return <div />
 
   const viewerDef = viewerRegistry.getByType(state.viewerType)
@@ -94,10 +132,17 @@ export function PreviewPanel(): React.JSX.Element {
 
   const fileName = isMarkdown
     ? (state.markdownTitle || t('preview.markdownPreview'))
-    : state.filePath ? state.filePath.split(/[\/]/).pop() || state.filePath : t('preview.devServer')
+    : state.filePath ? state.filePath.split(/[\/\\]/).pop() || state.filePath : t('preview.devServer')
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col border-l bg-background">
+    <div className="relative flex min-w-0 h-full flex-col border-l bg-background" style={{ width: panelWidth }}>
+      {/* Left-edge resize handle */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-20 hover:bg-primary/20 active:bg-primary/30 transition-colors"
+        onMouseDown={onResizeStart}
+      />
+      {/* Overlay to prevent iframe from stealing mouse events during drag */}
+      {isDragging && <div className="absolute inset-0 z-10" />}
       {/* Header */}
       <div className="flex h-10 items-center gap-2 border-b px-3">
         {isMarkdown && <Bot className="size-3.5 text-violet-500 shrink-0" />}

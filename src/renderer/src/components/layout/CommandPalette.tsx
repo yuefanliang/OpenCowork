@@ -90,6 +90,7 @@ export function CommandPalette(): React.JSX.Element {
 
   // Extract searchable text snippets from session messages
   const sessionKeywords = (s: typeof sessions[0]): string => {
+    if (!s.messagesLoaded) return ''
     const texts: string[] = []
     for (const m of s.messages) {
       if (typeof m.content === 'string') {
@@ -189,9 +190,14 @@ export function CommandPalette(): React.JSX.Element {
           <>
             <CommandGroup heading={t('commandPalette.currentSession')}>
               <CommandItem onSelect={() => runAndClose(() => {
-                const md = sessionToMarkdown(activeSession)
-                navigator.clipboard.writeText(md)
-                toast.success(t('commandPalette.copiedConversation'))
+                if (!activeSessionId) return
+                useChatStore.getState().loadSessionMessages(activeSessionId).then(() => {
+                  const latest = useChatStore.getState().sessions.find((s) => s.id === activeSessionId)
+                  if (!latest) return
+                  const md = sessionToMarkdown(latest)
+                  navigator.clipboard.writeText(md)
+                  toast.success(t('commandPalette.copiedConversation'))
+                }).catch(() => {})
               })}>
                 <Download className="size-4" />
                 <span>{t('commandPalette.exportCurrentChat')}</span>
@@ -248,7 +254,7 @@ export function CommandPalette(): React.JSX.Element {
                 <span className="truncate">{s.title}</span>
                 <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground/40">
                   {s.pinned && <Pin className="size-2.5" />}
-                  {s.messages.length}msg
+                  {s.messageCount}msg
                 </span>
               </CommandItem>
             ))}

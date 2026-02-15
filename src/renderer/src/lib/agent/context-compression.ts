@@ -113,7 +113,8 @@ export async function compressMessages(
   providerConfig: ProviderConfig,
   signal?: AbortSignal,
   preserveCount?: number,
-  focusPrompt?: string
+  focusPrompt?: string,
+  pinnedContext?: string
 ): Promise<{ messages: UnifiedMessage[]; result: CompressionResult }> {
   const originalCount = messages.length
 
@@ -169,10 +170,19 @@ export async function compressMessages(
     createdAt: Date.now()
   }
 
-  // Assemble: [original task (optional)] + [summary] + [recent messages]
+  // Assemble: [original task (optional)] + [pinned plan context (optional)] + [summary] + [recent messages]
   const newMessages: UnifiedMessage[] = []
   if (originalTaskMsg) {
     newMessages.push(originalTaskMsg)
+  }
+  // Inject pinned plan context so it survives compression
+  if (pinnedContext) {
+    newMessages.push({
+      id: nanoid(),
+      role: 'user',
+      content: `[Pinned Plan Context — DO NOT compress or discard]\n\n${pinnedContext}`,
+      createdAt: Date.now()
+    })
   }
   newMessages.push(summaryMsg)
   newMessages.push(...zoneB)

@@ -32,7 +32,27 @@
     "contextCompressionEnabled": "Enabled: Auto-compress when context usage exceeds 90%, original task and recent messages will be fully preserved",
     "resetDefault": "Reset to Default",
     "resetConfirm": "Reset all settings to default? API Keys will be preserved.",
-    "resetDone": "Reset to default settings"
+    "resetDone": "Reset to default settings",
+    "data": {
+      "title": "Data Management",
+      "subtitle": "Backup, import or clear conversation data",
+      "backupTitle": "Backup sessions",
+      "backupDesc": "Export all conversations as a JSON backup file.",
+      "backupAction": "Export JSON",
+      "backupSuccess": "Backed up {{count}} sessions",
+      "importTitle": "Import sessions",
+      "importDesc": "Restore sessions from a JSON backup file.",
+      "importAction": "Import JSON",
+      "importSuccess": "Imported {{count}} new sessions",
+      "importNone": "No new sessions to import",
+      "importFailed": "Import failed: {{error}}",
+      "clearTitle": "Clear all data",
+      "clearDesc": "Delete every session and message. This cannot be undone.",
+      "clearAction": "Delete all sessions",
+      "clearConfirm": "Delete all {{count}} sessions? This cannot be undone.",
+      "cleared": "Deleted {{count}} sessions",
+      "noSessions": "No sessions available"
+    }
   },
   "model": {
     "title": "Model Configuration",

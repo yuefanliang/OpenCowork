@@ -8,4 +8,5 @@ export interface BuiltinProviderPreset {
   defaultModels: AIModelConfig[]
   defaultEnabled?: boolean
   requiresApiKey?: boolean
+  homepage: string
 }

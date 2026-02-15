@@ -4,6 +4,7 @@ import type { ToolHandler } from './tool-types'
 import { useAgentStore } from '@renderer/stores/agent-store'
 
 let execCounter = 0
+const DEFAULT_BASH_TIMEOUT_MS = 600_000
 
 const bashHandler: ToolHandler = {
   definition: {
@@ -15,7 +16,7 @@ const bashHandler: ToolHandler = {
         command: { type: 'string', description: 'The command to execute' },
         timeout: {
           type: 'number',
-          description: 'Timeout in milliseconds (max 600000, default 120000)',
+          description: 'Timeout in milliseconds (max 3600000, default 600000)',
         },
         description: { type: 'string', description: '5-10 word description of the command' },
       },
@@ -39,15 +40,21 @@ const bashHandler: ToolHandler = {
       }
     })
 
+    const abortHandler = (): void => {
+      ctx.ipc.send(IPC.SHELL_ABORT, { execId })
+    }
+    ctx.signal.addEventListener('abort', abortHandler, { once: true })
+
     try {
       const result = await ctx.ipc.invoke(IPC.SHELL_EXEC, {
         command: input.command,
-        timeout: input.timeout ?? 120000,
+        timeout: input.timeout ?? DEFAULT_BASH_TIMEOUT_MS,
         cwd: ctx.workingFolder,
         execId,
       })
       return JSON.stringify(result)
     } finally {
+      ctx.signal.removeEventListener('abort', abortHandler)
       cleanup()
     }
   },

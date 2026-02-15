@@ -24,9 +24,13 @@ export function ArtifactsPanel(): React.JSX.Element {
 
   const handleCopyPath = useCallback((id: string, path: string) => {
     navigator.clipboard.writeText(path)
-    useUIStore.getState().setPendingInsertText(path.split(/[\\/]/).slice(-2).join('/'))
     setCopiedId(id)
     setTimeout(() => setCopiedId(null), 1500)
+  }, [])
+
+  const handleOpenPreview = useCallback((path: string) => {
+    if (!path) return
+    useUIStore.getState().openFilePreview(path)
   }, [])
 
   const fileOps = executedToolCalls.filter((tc) => FILE_TOOLS.has(tc.name))
@@ -93,9 +97,8 @@ export function ArtifactsPanel(): React.JSX.Element {
             <button
               key={tc.id}
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted/50 transition-colors group"
-              onClick={() => handleCopyPath(tc.id, filePath)}
-              onDoubleClick={() => useUIStore.getState().openFilePreview(filePath)}
-              title={t('artifacts.clickCopyDoublePreview', { path: filePath })}
+              onClick={() => handleOpenPreview(filePath)}
+              title={filePath}
             >
               {ops.has('Write') ? (
                 <FileText className="size-3.5 shrink-0 text-blue-500" />
@@ -109,20 +112,30 @@ export function ArtifactsPanel(): React.JSX.Element {
                   {count > 1 && <span className="shrink-0 text-muted-foreground/30">{count}×</span>}
                 </div>
               </div>
-              <div className="flex items-center gap-0.5 shrink-0">
+              <div className="flex items-center gap-1 shrink-0">
                 {isPreviewable && (
                   <Eye className="size-3.5 shrink-0 text-blue-500/60" />
                 )}
-                {isCopied ? (
-                  <Check className="size-3 shrink-0 text-green-500" />
-                ) : isError ? (
+                {isError ? (
                   <XCircle className="size-3.5 shrink-0 text-destructive" />
                 ) : (
-                  <>
-                    <CheckCircle2 className="size-3.5 shrink-0 text-green-500 group-hover:hidden" />
-                    <Copy className="size-3.5 shrink-0 text-muted-foreground hidden group-hover:block" />
-                  </>
+                  <CheckCircle2 className="size-3.5 shrink-0 text-green-500" />
                 )}
+                <button
+                  type="button"
+                  className="rounded-full p-1 text-muted-foreground hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleCopyPath(tc.id, filePath)
+                  }}
+                  aria-label={t('artifacts.copyPath')}
+                >
+                  {isCopied ? (
+                    <Check className="size-3 text-green-500" />
+                  ) : (
+                    <Copy className="size-3" />
+                  )}
+                </button>
               </div>
             </button>
           )

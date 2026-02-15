@@ -26,6 +26,7 @@ export const IPC = {
 
   // Shell
   SHELL_EXEC: 'shell:exec',
+  SHELL_ABORT: 'shell:abort',
 
   // Process Management
   PROCESS_SPAWN: 'process:spawn',

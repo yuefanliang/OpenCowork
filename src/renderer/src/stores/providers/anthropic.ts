@@ -5,6 +5,7 @@ export const anthropicPreset: BuiltinProviderPreset = {
   name: 'Anthropic',
   type: 'anthropic',
   defaultBaseUrl: 'https://api.anthropic.com',
+  homepage: 'https://anthropic.com',
   defaultModels: [
     // Claude 4.6 / 4.5 series (cache write: 1.25x input, cache read: 0.1x input)
     { id: 'claude-opus-4-6-20260201', name: 'Claude Opus 4.6', icon: 'claude', enabled: true, contextLength: 1_000_000, maxOutputTokens: 16_384, supportsVision: true, supportsFunctionCall: true, inputPrice: 5, outputPrice: 25, cacheCreationPrice: 6.25, cacheHitPrice: 0.5, supportsThinking: true, thinkingConfig: { bodyParams: { thinking: { type: 'enabled', budget_tokens: 10000 } }, forceTemperature: 1 } },

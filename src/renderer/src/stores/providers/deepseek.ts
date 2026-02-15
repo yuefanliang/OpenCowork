@@ -5,6 +5,7 @@ export const deepseekPreset: BuiltinProviderPreset = {
   name: 'DeepSeek',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.deepseek.com/v1',
+  homepage: 'https://platform.deepseek.com',
   defaultModels: [
     {
       id: 'deepseek-chat',

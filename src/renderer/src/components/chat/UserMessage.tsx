@@ -5,20 +5,53 @@ import { Button } from '@renderer/components/ui/button'
 import { User, Pencil, Check, X, Copy } from 'lucide-react'
 import { formatTokens } from '@renderer/lib/format-tokens'
 import { useMemoizedTokens } from '@renderer/hooks/use-estimated-tokens'
-import type { ImageBlock } from '@renderer/lib/api/types'
+import type { ImageBlock, ContentBlock } from '@renderer/lib/api/types'
 
 interface UserMessageProps {
-  content: string
+  content: string | ContentBlock[]
   images?: ImageBlock[]
   isLast?: boolean
   onEdit?: (newContent: string) => void
 }
 
+// Helper: Extract plain text from content, filtering out system-remind tags
+function extractPlainText(content: string | ContentBlock[]): string {
+  let text = ''
+  
+  if (typeof content === 'string') {
+    text = content
+  } else {
+    // Extract text from ContentBlock[]
+    text = content
+      .filter((block): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text')
+      .map(block => block.text)
+      .join('\n')
+  }
+  
+  // Filter out <system-remind>...</system-remind> tags
+  return text.replace(/<system-remind>[\s\S]*?<\/system-remind>\s*/g, '').trim()
+}
+
+// Helper: Extract images from ContentBlock[]
+function extractImages(content: string | ContentBlock[]): ImageBlock[] {
+  if (typeof content === 'string') return []
+  return content.filter((block): block is ImageBlock => block.type === 'image')
+}
+
 export function UserMessage({ content, images, isLast, onEdit }: UserMessageProps): React.JSX.Element {
   const { t } = useTranslation('chat')
-  const memoizedTokens = useMemoizedTokens(content)
+  const plainText = extractPlainText(content)
+  const contentImages = extractImages(content)
+  const allImages = [...(images || []), ...contentImages]
+  
+  // Token count should reflect actual content sent to LLM (including system-remind)
+  const fullText = typeof content === 'string' 
+    ? content 
+    : content.filter(b => b.type === 'text').map(b => b.text).join('\n')
+  const memoizedTokens = useMemoizedTokens(fullText)
+  
   const [editing, setEditing] = useState(false)
-  const [editText, setEditText] = useState(content)
+  const [editText, setEditText] = useState(plainText)
   const [copied, setCopied] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -31,14 +64,14 @@ export function UserMessage({ content, images, isLast, onEdit }: UserMessageProp
 
   const handleSave = (): void => {
     const trimmed = editText.trim()
-    if (trimmed && trimmed !== content && onEdit) {
+    if (trimmed && trimmed !== plainText && onEdit) {
       onEdit(trimmed)
     }
     setEditing(false)
   }
 
   const handleCancel = (): void => {
-    setEditText(content)
+    setEditText(plainText)
     setEditing(false)
   }
 
@@ -65,7 +98,7 @@ export function UserMessage({ content, images, isLast, onEdit }: UserMessageProp
           {!editing && (
             <span className="opacity-0 group-hover/user:opacity-100 transition-opacity flex items-center gap-0.5">
               <button
-                onClick={() => { navigator.clipboard.writeText(content); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
+                onClick={() => { navigator.clipboard.writeText(plainText); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
                 className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted-foreground/10 transition-colors"
               >
                 {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
@@ -73,7 +106,7 @@ export function UserMessage({ content, images, isLast, onEdit }: UserMessageProp
               </button>
               {isLast && onEdit && (
                 <button
-                  onClick={() => { setEditText(content); setEditing(true) }}
+                  onClick={() => { setEditText(plainText); setEditing(true) }}
                   className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted-foreground/10 transition-colors"
                 >
                   <Pencil className="size-3" />
@@ -106,9 +139,9 @@ export function UserMessage({ content, images, isLast, onEdit }: UserMessageProp
           </div>
         ) : (
           <>
-            {images && images.length > 0 && (
+            {allImages.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2">
-                {images.map((img, idx) => {
+                {allImages.map((img, idx) => {
                   const src = img.source.type === 'base64'
                     ? `data:${img.source.mediaType || 'image/png'};base64,${img.source.data}`
                     : img.source.url || ''
@@ -124,10 +157,10 @@ export function UserMessage({ content, images, isLast, onEdit }: UserMessageProp
                 })}
               </div>
             )}
-            {content && <div className="text-sm whitespace-pre-wrap leading-relaxed">{content}</div>}
+            {plainText && <div className="text-sm whitespace-pre-wrap leading-relaxed">{plainText}</div>}
           </>
         )}
-        {!editing && content.length > 50 && (
+        {!editing && plainText.length > 50 && (
           <p className="mt-1 text-[10px] text-muted-foreground/0 group-hover/user:text-muted-foreground/40 transition-colors tabular-nums">
             {formatTokens(memoizedTokens)} {t('unit.tokens', { ns: 'common' })}
           </p>

@@ -25,7 +25,10 @@
     "clearConfirmDesc": "这将删除此对话中的所有消息，此操作不可撤销。",
     "sendTooltip": "发送 (Enter)",
     "stopTooltip": "停止 (Esc)",
-    "noWorkingFolder": "使用 {{mode}} 模式前请先选择工作目录，点击此处选择。"
+    "noWorkingFolder": "使用 {{mode}} 模式前请先选择工作目录，点击此处选择。",
+    "enterPlanMode": "进入计划模式",
+    "exitPlanMode": "退出计划模式",
+    "planModeActive": "计划模式 — 仅浏览代码库，不修改文件"
   },
   "permission": {
     "title": "需要权限",

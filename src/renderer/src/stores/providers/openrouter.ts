@@ -5,6 +5,7 @@ export const openrouterPreset: BuiltinProviderPreset = {
   name: 'OpenRouter',
   type: 'openai-chat',
   defaultBaseUrl: 'https://openrouter.ai/api/v1',
+  homepage: 'https://openrouter.ai',
   defaultModels: [
     // ── Anthropic ──
     { id: 'anthropic/claude-opus-4.6', name: 'Claude Opus 4.6', icon: 'claude', enabled: true, contextLength: 1_000_000, maxOutputTokens: 16_384, supportsVision: true, supportsFunctionCall: true, inputPrice: 5, outputPrice: 25, cacheCreationPrice: 6.25, cacheHitPrice: 0.5 },

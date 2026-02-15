@@ -19,6 +19,8 @@ const teammateAbortControllers = new Map<string, AbortController>()
 // When a shutdown_request is received, the teammate finishes its current
 // iteration and then stops — instead of hard aborting mid-tool-call.
 const teammateShutdownRequested = new Set<string>()
+// 0 => unlimited iterations (teammate stops only on completion/shutdown/error/abort)
+const DEFAULT_TEAMMATE_MAX_ITERATIONS = 0
 
 /**
  * Request graceful shutdown: teammate finishes current iteration then stops.
@@ -281,7 +283,7 @@ async function runSingleTaskLoop(opts: {
   providerConfig.systemPrompt = systemPrompt
 
   const loopConfig: AgentLoopConfig = {
-    maxIterations: 15,
+    maxIterations: DEFAULT_TEAMMATE_MAX_ITERATIONS,
     provider: providerConfig,
     tools: toolDefs,
     systemPrompt,
