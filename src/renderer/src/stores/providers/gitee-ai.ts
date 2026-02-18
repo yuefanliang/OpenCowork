@@ -6,6 +6,7 @@ export const giteeAiPreset: BuiltinProviderPreset = {
   type: 'openai-chat',
   defaultBaseUrl: 'https://ai.gitee.com/v1',
   homepage: 'https://ai.gitee.com',
+  apiKeyUrl: 'https://ai.gitee.com',
   defaultModels: [
     // ── DeepSeek ──
     { id: 'DeepSeek-V3', name: 'DeepSeek V3', icon: 'deepseek', enabled: true, contextLength: 131_072, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, supportsThinking: true, thinkingConfig: { bodyParams: { enable_thinking: true } } },

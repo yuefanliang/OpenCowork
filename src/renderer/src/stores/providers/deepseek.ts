@@ -6,6 +6,7 @@ export const deepseekPreset: BuiltinProviderPreset = {
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.deepseek.com/v1',
   homepage: 'https://platform.deepseek.com',
+  apiKeyUrl: 'https://platform.deepseek.com/api_keys',
   defaultModels: [
     {
       id: 'deepseek-chat',
@@ -16,9 +17,9 @@ export const deepseekPreset: BuiltinProviderPreset = {
       maxOutputTokens: 8_192,
       supportsVision: false,
       supportsFunctionCall: true,
-      inputPrice: 0.28,
-      outputPrice: 0.42, cacheCreationPrice: 0.28,
-      cacheHitPrice: 0.028,
+      inputPrice: 0.26,
+      outputPrice: 0.38, cacheCreationPrice: 0.26,
+      cacheHitPrice: 0.026,
       supportsThinking: true,
       thinkingConfig: { bodyParams: { enable_thinking: true } }
     },
@@ -31,10 +32,10 @@ export const deepseekPreset: BuiltinProviderPreset = {
       maxOutputTokens: 64_000,
       supportsVision: false,
       supportsFunctionCall: false,
-      inputPrice: 0.28,
-      outputPrice: 0.42,
-      cacheCreationPrice: 0.28,
-      cacheHitPrice: 0.028
+      inputPrice: 0.7,
+      outputPrice: 2.5,
+      cacheCreationPrice: 0.7,
+      cacheHitPrice: 0.07
     },
   ],
 }

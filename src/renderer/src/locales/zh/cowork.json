@@ -9,6 +9,9 @@
     "created": "创建于 {{time}}",
     "toolCalls": "{{count}} 次工具调用",
     "subAgentRuns": "{{count}} 次子代理运行",
+    "runningCommands": "{{count}} 个运行中命令",
+    "openSession": "进入会话",
+    "stopCommand": "停止命令",
     "autoApproved": "自动批准：{{count}}",
     "noContext": "未加载上下文",
     "noContextDesc": "选择工作目录以允许助手访问你的项目"

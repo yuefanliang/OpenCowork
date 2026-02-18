@@ -9,4 +9,6 @@ export interface BuiltinProviderPreset {
   defaultEnabled?: boolean
   requiresApiKey?: boolean
   homepage: string
+  /** Link for users to create/manage API keys */
+  apiKeyUrl?: string
 }

@@ -9,6 +9,9 @@
     "created": "Created {{time}}",
     "toolCalls": "{{count}} tool calls",
     "subAgentRuns": "{{count}} SubAgent runs",
+    "runningCommands": "{{count}} running commands",
+    "openSession": "Open Session",
+    "stopCommand": "Stop Command",
     "autoApproved": "Auto-approved: {{count}}",
     "noContext": "No context loaded",
     "noContextDesc": "Select a working folder to give the assistant access to your project"

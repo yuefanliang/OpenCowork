@@ -258,6 +258,7 @@ export function SubAgentCard({
                 {live.toolCalls.map((tc) => (
                   <ToolCallCard
                     key={tc.id}
+                    toolUseId={tc.id}
                     name={tc.name}
                     input={tc.input}
                     output={tc.output}
@@ -297,6 +298,7 @@ export function SubAgentCard({
                 {histMeta.toolCalls.map((tc) => (
                   <ToolCallCard
                     key={tc.id}
+                    toolUseId={tc.id}
                     name={tc.name}
                     input={tc.input}
                     output={tc.output}

@@ -6,6 +6,7 @@ export const openaiPreset: BuiltinProviderPreset = {
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.openai.com/v1',
   homepage: 'https://openai.com',
+  apiKeyUrl: 'https://platform.openai.com/api-keys',
   defaultModels: [
     // GPT-5 family (cache: 90% off input)
     { id: 'gpt-5.2', name: 'GPT-5.2', icon: 'openai', enabled: true, contextLength: 1_048_576, maxOutputTokens: 32_768, supportsVision: true, supportsFunctionCall: true, inputPrice: 1.75, outputPrice: 14, cacheCreationPrice: 1.75, cacheHitPrice: 0.175, supportsThinking: true, thinkingConfig: { bodyParams: { reasoning_effort: 'medium' }, reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh'], defaultReasoningEffort: 'medium' } },

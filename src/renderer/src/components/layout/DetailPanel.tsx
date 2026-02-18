@@ -5,6 +5,8 @@ import {
   FileText,
   Users,
   Bot,
+  Terminal,
+  SendHorizontal,
   Clock,
   ChevronDown,
   ChevronRight,
@@ -18,6 +20,8 @@ import { TeamPanel } from '@renderer/components/cowork/TeamPanel'
 import { ToolCallCard } from '@renderer/components/chat/ToolCallCard'
 import { Separator } from '@renderer/components/ui/separator'
 import { Badge } from '@renderer/components/ui/badge'
+import { Button } from '@renderer/components/ui/button'
+import { Input } from '@renderer/components/ui/input'
 import { cn } from '@renderer/lib/utils'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -233,6 +237,7 @@ function SubAgentDetailItem({ sa, defaultOpen }: { sa: SubAgentState; defaultOpe
                   {sa.toolCalls.map((tc) => (
                     <ToolCallCard
                       key={tc.id}
+                      toolUseId={tc.id}
                       name={tc.name}
                       input={tc.input}
                       output={tc.output}
@@ -325,6 +330,124 @@ function SubAgentDetailView({ toolUseId }: { toolUseId?: string }): React.JSX.El
   )
 }
 
+function TerminalDetailView({ processId }: { processId: string }): React.JSX.Element {
+  const { t } = useTranslation('layout')
+  const process = useAgentStore((s) => s.backgroundProcesses[processId])
+  const sendBackgroundProcessInput = useAgentStore((s) => s.sendBackgroundProcessInput)
+  const stopBackgroundProcess = useAgentStore((s) => s.stopBackgroundProcess)
+  const [input, setInput] = React.useState('')
+  const outputRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    if (!outputRef.current) return
+    outputRef.current.scrollTop = outputRef.current.scrollHeight
+  }, [process?.output, process?.status])
+
+  if (!process) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <Terminal className="mb-3 size-8 text-muted-foreground/40" />
+        <p className="text-sm text-muted-foreground">{t('detailPanel.terminalNotFound')}</p>
+      </div>
+    )
+  }
+
+  const isRunning = process.status === 'running'
+  const statusText =
+    process.status === 'running'
+      ? t('detailPanel.running')
+      : process.status === 'stopped'
+        ? t('detailPanel.stopped')
+        : process.status === 'error'
+          ? t('detailPanel.error')
+          : t('detailPanel.exited')
+
+  const handleSend = (): void => {
+    if (input.length === 0 || !isRunning) return
+    void sendBackgroundProcessInput(processId, input, true)
+    setInput('')
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1 rounded-lg border border-muted p-3">
+        <div className="flex items-center gap-2">
+          <Badge
+            variant={isRunning ? 'default' : 'secondary'}
+            className={cn('text-[10px]', isRunning && 'bg-emerald-500')}
+          >
+            {statusText}
+          </Badge>
+          <span className="text-[11px] text-muted-foreground">
+            {t('detailPanel.processId')}: {process.id}
+          </span>
+        </div>
+        <div className="text-xs text-muted-foreground">
+          {t('detailPanel.command')}: <span className="font-mono">{process.command}</span>
+        </div>
+        {process.cwd && (
+          <div className="text-xs text-muted-foreground">
+            {t('detailPanel.workingDirectory')}: <span className="font-mono">{process.cwd}</span>
+          </div>
+        )}
+      </div>
+
+      <div
+        ref={outputRef}
+        className="h-[360px] overflow-auto rounded-lg border bg-zinc-950 px-3 py-2 text-[11px] font-mono text-zinc-200 whitespace-pre-wrap break-words"
+      >
+        {process.output || '[no output yet]'}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              handleSend()
+            }
+          }}
+          placeholder={t('detailPanel.inputPlaceholder')}
+          disabled={!isRunning}
+          className="h-8 text-xs"
+        />
+        <Button
+          size="sm"
+          className="h-8 gap-1.5"
+          onClick={handleSend}
+          disabled={!isRunning || input.length === 0}
+        >
+          <SendHorizontal className="size-3.5" />
+          {t('detailPanel.sendInput')}
+        </Button>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs"
+          disabled={!isRunning}
+          onClick={() => void sendBackgroundProcessInput(processId, '\u0003', false)}
+        >
+          {t('detailPanel.sendCtrlC')}
+        </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          className="h-7 text-xs"
+          disabled={!isRunning}
+          onClick={() => void stopBackgroundProcess(processId)}
+        >
+          {t('detailPanel.stopProcess')}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // ── Main DetailPanel ─────────────────────────────────────────────
 
 export function DetailPanel(): React.JSX.Element {
@@ -336,6 +459,8 @@ export function DetailPanel(): React.JSX.Element {
     ? t('detailPanel.team')
     : content?.type === 'subagent'
       ? t('detailPanel.subAgent')
+      : content?.type === 'terminal'
+        ? t('detailPanel.terminal')
       : content?.type === 'document'
         ? content.title
         : content?.type === 'report'
@@ -346,6 +471,8 @@ export function DetailPanel(): React.JSX.Element {
     ? <Users className="size-4 text-cyan-500" />
     : content?.type === 'subagent'
       ? <Bot className="size-4 text-violet-500" />
+      : content?.type === 'terminal'
+        ? <Terminal className="size-4 text-emerald-500" />
       : <FileText className="size-4 text-muted-foreground" />
 
   return (
@@ -376,6 +503,12 @@ export function DetailPanel(): React.JSX.Element {
           {content?.type === 'subagent' && (
             <FadeIn key="subagent" className="h-full">
               <SubAgentDetailView toolUseId={content.toolUseId} />
+            </FadeIn>
+          )}
+
+          {content?.type === 'terminal' && (
+            <FadeIn key="terminal" className="h-full">
+              <TerminalDetailView processId={content.processId} />
             </FadeIn>
           )}
 

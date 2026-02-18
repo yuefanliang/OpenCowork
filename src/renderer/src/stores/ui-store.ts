@@ -31,6 +31,8 @@ export type DetailPanelContent =
 
   | { type: 'subagent'; toolUseId?: string }
 
+  | { type: 'terminal'; processId: string }
+
   | { type: 'document'; title: string; content: string }
 
   | { type: 'report'; title: string; data: unknown }

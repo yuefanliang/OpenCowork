@@ -617,7 +617,12 @@ export function useChatActions() {
         const loop = runAgentLoop(
           messages.slice(0, -1), // Exclude the empty assistant placeholder
           loopConfig,
-          { workingFolder: session?.workingFolder, signal: abortController.signal, ipc: ipcClient },
+          {
+            sessionId,
+            workingFolder: session?.workingFolder,
+            signal: abortController.signal,
+            ipc: ipcClient
+          },
           async (tc) => {
             const autoApprove = useSettingsStore.getState().autoApprove
             if (autoApprove) return true
@@ -648,25 +653,28 @@ export function useChatActions() {
                 const closeThinkTagMatch = hasThinkingDelta
                   ? chunk.match(/<\s*\/\s*think\s*>/i)
                   : null
-                if (closeThinkTagMatch && closeThinkTagMatch.index !== undefined) {
-                  const beforeClose = chunk.slice(0, closeThinkTagMatch.index)
-                  const afterClose = chunk.slice(
-                    closeThinkTagMatch.index + closeThinkTagMatch[0].length
-                  )
-                  if (beforeClose) {
-                    streamDeltaBuffer.pushThinking(beforeClose)
+                const keepThinkingOpen = hasThinkingDelta && !closeThinkTagMatch
+                if (!keepThinkingOpen) {
+                  if (closeThinkTagMatch && closeThinkTagMatch.index !== undefined) {
+                    const beforeClose = chunk.slice(0, closeThinkTagMatch.index)
+                    const afterClose = chunk.slice(
+                      closeThinkTagMatch.index + closeThinkTagMatch[0].length
+                    )
+                    if (beforeClose) {
+                      streamDeltaBuffer.pushThinking(beforeClose)
+                    }
+                    streamDeltaBuffer.flushNow()
+                    thinkingDone = true
+                    useChatStore.getState().completeThinking(sessionId!, assistantMsgId)
+                    if (afterClose) {
+                      streamDeltaBuffer.pushText(afterClose)
+                    }
+                    break
                   }
-                  streamDeltaBuffer.flushNow()
                   thinkingDone = true
+                  streamDeltaBuffer.flushNow()
                   useChatStore.getState().completeThinking(sessionId!, assistantMsgId)
-                  if (afterClose) {
-                    streamDeltaBuffer.pushText(afterClose)
-                  }
-                  break
                 }
-                thinkingDone = true
-                streamDeltaBuffer.flushNow()
-                useChatStore.getState().completeThinking(sessionId!, assistantMsgId)
               }
               streamDeltaBuffer.pushText(event.text)
               break
@@ -833,6 +841,18 @@ export function useChatActions() {
       } finally {
         streamDeltaBuffer?.flushNow()
         streamDeltaBuffer?.dispose()
+        // Defensive cleanup: if provider stream ended without completing a tool call,
+        // avoid leaving tool cards stuck at "receiving args".
+        const { executedToolCalls, pendingToolCalls, updateToolCall } = useAgentStore.getState()
+        for (const tc of [...executedToolCalls, ...pendingToolCalls]) {
+          if (tc.status === 'streaming') {
+            updateToolCall(tc.id, {
+              status: 'error',
+              error: 'Tool call stream ended before execution',
+              completedAt: Date.now()
+            })
+          }
+        }
         unsubSubAgent()
         agentStore.setSessionStatus(sessionId, 'completed')
         chatStore.setStreamingMessageId(sessionId, null)
@@ -1101,25 +1121,28 @@ async function runSimpleChat(
             const closeThinkTagMatch = hasThinkingDelta
               ? chunk.match(/<\s*\/\s*think\s*>/i)
               : null
-            if (closeThinkTagMatch && closeThinkTagMatch.index !== undefined) {
-              const beforeClose = chunk.slice(0, closeThinkTagMatch.index)
-              const afterClose = chunk.slice(
-                closeThinkTagMatch.index + closeThinkTagMatch[0].length
-              )
-              if (beforeClose) {
-                streamDeltaBuffer.pushThinking(beforeClose)
+            const keepThinkingOpen = hasThinkingDelta && !closeThinkTagMatch
+            if (!keepThinkingOpen) {
+              if (closeThinkTagMatch && closeThinkTagMatch.index !== undefined) {
+                const beforeClose = chunk.slice(0, closeThinkTagMatch.index)
+                const afterClose = chunk.slice(
+                  closeThinkTagMatch.index + closeThinkTagMatch[0].length
+                )
+                if (beforeClose) {
+                  streamDeltaBuffer.pushThinking(beforeClose)
+                }
+                streamDeltaBuffer.flushNow()
+                thinkingDone = true
+                useChatStore.getState().completeThinking(sessionId, assistantMsgId)
+                if (afterClose) {
+                  streamDeltaBuffer.pushText(afterClose)
+                }
+                break
               }
-              streamDeltaBuffer.flushNow()
               thinkingDone = true
+              streamDeltaBuffer.flushNow()
               useChatStore.getState().completeThinking(sessionId, assistantMsgId)
-              if (afterClose) {
-                streamDeltaBuffer.pushText(afterClose)
-              }
-              break
             }
-            thinkingDone = true
-            streamDeltaBuffer.flushNow()
-            useChatStore.getState().completeThinking(sessionId, assistantMsgId)
           }
           streamDeltaBuffer.pushText(event.text!)
           break

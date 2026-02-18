@@ -76,7 +76,19 @@
     "showAllLines": "显示全部 {{count}} 行",
     "unchangedLines": "··· {{count}} 行未变更 ···",
     "clickToInsert": "点击插入：{{path}}",
-    "exitCode": "退出码 {{code}}"
+    "exitCode": "退出码 {{code}}",
+    "noOutputYet": "[暂无输出]",
+    "openSession": "打开终端",
+    "sendCtrlC": "发送 Ctrl+C",
+    "stopProcess": "停止进程",
+    "inputPlaceholder": "输入终端命令并回车",
+    "sendInput": "发送",
+    "processStatus": {
+      "running": "运行中",
+      "stopped": "已停止",
+      "error": "错误",
+      "exited": "已退出"
+    }
   },
   "subAgent": {
     "working": "工作中",

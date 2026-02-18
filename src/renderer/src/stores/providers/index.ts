@@ -8,8 +8,10 @@ import { deepseekPreset } from './deepseek'
 import { openrouterPreset } from './openrouter'
 import { ollamaPreset } from './ollama'
 import { azureOpenaiPreset } from './azure-openai'
-import { moonshotPreset } from './moonshot'
-import { qwenPreset } from './qwen'
+import { moonshotCodingPreset, moonshotPreset } from './moonshot'
+import { qwenCodingPreset, qwenPreset } from './qwen'
+import { minimaxCodingPreset, minimaxPreset } from './minimax'
+import { baiduCodingPreset, baiduPreset } from './baidu'
 import { siliconflowPreset } from './siliconflow'
 import { giteeAiPreset } from './gitee-ai'
 import { xiaomiPreset } from './xiaomi'
@@ -24,8 +26,14 @@ export const builtinProviderPresets: BuiltinProviderPreset[] = [
   openrouterPreset,
   ollamaPreset,
   azureOpenaiPreset,
+  moonshotCodingPreset,
   moonshotPreset,
+  qwenCodingPreset,
   qwenPreset,
+  baiduCodingPreset,
+  baiduPreset,
+  minimaxCodingPreset,
+  minimaxPreset,
   siliconflowPreset,
   giteeAiPreset,
   xiaomiPreset,

@@ -76,7 +76,19 @@
     "showAllLines": "Show all {{count}} lines",
     "unchangedLines": "··· {{count}} unchanged lines ···",
     "clickToInsert": "Click to insert: {{path}}",
-    "exitCode": "exit {{code}}"
+    "exitCode": "exit {{code}}",
+    "noOutputYet": "[no output yet]",
+    "openSession": "Open terminal",
+    "sendCtrlC": "Send Ctrl+C",
+    "stopProcess": "Stop process",
+    "inputPlaceholder": "Type terminal input and press Enter",
+    "sendInput": "Send",
+    "processStatus": {
+      "running": "running",
+      "stopped": "stopped",
+      "error": "error",
+      "exited": "exited"
+    }
   },
   "subAgent": {
     "working": "working",

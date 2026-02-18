@@ -172,8 +172,25 @@ export interface ImageAttachment {
   mediaType: string
 }
 
+interface InputHistoryEntry {
+  text: string
+  images: ImageAttachment[]
+}
+
+interface InputHistoryDraft {
+  text: string
+  images: ImageAttachment[]
+  selectedSkill: string | null
+}
+
 const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
 const MAX_IMAGE_SIZE = 20 * 1024 * 1024 // 20 MB
+const INPUT_HISTORY_LIMIT = 30
+const PENDING_HISTORY_KEY = '__pending_session__'
+
+function cloneImages(images: ImageAttachment[]): ImageAttachment[] {
+  return images.map((img) => ({ ...img }))
+}
 
 function fileToImageAttachment(file: File): Promise<ImageAttachment | null> {
   return new Promise((resolve) => {
@@ -212,6 +229,11 @@ export function InputArea({
   const [attachedImages, setAttachedImages] = React.useState<ImageAttachment[]>([])
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const [sentHistory, setSentHistory] = React.useState<InputHistoryEntry[]>([])
+  const [historyCursor, setHistoryCursor] = React.useState<number | null>(null)
+  const historyDraftRef = React.useRef<InputHistoryDraft | null>(null)
+  const historyBySessionRef = React.useRef<Record<string, InputHistoryEntry[]>>({})
+  const prevSessionIdRef = React.useRef<string | null>(null)
   const activeProvider = useProviderStore((s) => {
     const { providers, activeProviderId } = s
     if (!activeProviderId) return null
@@ -247,6 +269,84 @@ export function InputArea({
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen)
   const mode = useUIStore((s) => s.mode)
   const activeSessionId = useChatStore((s) => s.activeSessionId)
+  const getHistoryKey = React.useCallback(() => activeSessionId ?? PENDING_HISTORY_KEY, [activeSessionId])
+  const updateSessionHistory = React.useCallback((updater: (prev: InputHistoryEntry[]) => InputHistoryEntry[]) => {
+    const historyKey = getHistoryKey()
+    const prevHistory = historyBySessionRef.current[historyKey] ?? []
+    const nextHistory = updater(prevHistory)
+    historyBySessionRef.current[historyKey] = nextHistory
+    setSentHistory(nextHistory)
+  }, [getHistoryKey])
+  const clearHistoryNavigation = React.useCallback(() => {
+    if (historyCursor !== null) {
+      setHistoryCursor(null)
+      historyDraftRef.current = null
+    }
+  }, [historyCursor])
+  const resizeTextarea = React.useCallback(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+  }, [])
+  const focusInputAtEnd = React.useCallback(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.focus()
+    const cursor = el.value.length
+    el.setSelectionRange(cursor, cursor)
+  }, [])
+  const applyHistoryEntry = React.useCallback((entry: InputHistoryEntry) => {
+    setText(entry.text)
+    setAttachedImages(cloneImages(entry.images))
+    setSelectedSkill(null)
+    requestAnimationFrame(() => {
+      resizeTextarea()
+      focusInputAtEnd()
+    })
+  }, [focusInputAtEnd, resizeTextarea])
+  const restoreDraftFromHistory = React.useCallback(() => {
+    const draft = historyDraftRef.current
+    setText(draft?.text ?? '')
+    setAttachedImages(cloneImages(draft?.images ?? []))
+    setSelectedSkill(draft?.selectedSkill ?? null)
+    historyDraftRef.current = null
+    requestAnimationFrame(() => {
+      resizeTextarea()
+      focusInputAtEnd()
+    })
+  }, [focusInputAtEnd, resizeTextarea])
+  const navigateHistory = React.useCallback((direction: 'up' | 'down') => {
+    if (sentHistory.length === 0) return
+    if (direction === 'up') {
+      if (historyCursor === null) {
+        historyDraftRef.current = {
+          text,
+          images: cloneImages(attachedImages),
+          selectedSkill,
+        }
+        const latest = sentHistory.length - 1
+        setHistoryCursor(latest)
+        applyHistoryEntry(sentHistory[latest])
+        return
+      }
+      const next = Math.max(historyCursor - 1, 0)
+      if (next !== historyCursor) {
+        setHistoryCursor(next)
+        applyHistoryEntry(sentHistory[next])
+      }
+      return
+    }
+    if (historyCursor === null) return
+    const next = historyCursor + 1
+    if (next >= sentHistory.length) {
+      setHistoryCursor(null)
+      restoreDraftFromHistory()
+      return
+    }
+    setHistoryCursor(next)
+    applyHistoryEntry(sentHistory[next])
+  }, [historyCursor, sentHistory, text, attachedImages, selectedSkill, applyHistoryEntry, restoreDraftFromHistory])
   const hasMessages = useChatStore((s) => {
     const session = s.sessions.find((sess) => sess.id === s.activeSessionId)
     return (session?.messageCount ?? 0) > 0
@@ -276,29 +376,53 @@ export function InputArea({
     void useChatStore.getState().loadSessionMessages(activeSessionId)
   }, [activeSessionId])
 
+  React.useEffect(() => {
+    const prevSessionId = prevSessionIdRef.current
+    if (!prevSessionId && activeSessionId) {
+      const pendingHistory = historyBySessionRef.current[PENDING_HISTORY_KEY]
+      if (pendingHistory && pendingHistory.length > 0 && !historyBySessionRef.current[activeSessionId]) {
+        historyBySessionRef.current[activeSessionId] = pendingHistory
+        delete historyBySessionRef.current[PENDING_HISTORY_KEY]
+      }
+    }
+    const historyKey = activeSessionId ?? PENDING_HISTORY_KEY
+    setSentHistory(historyBySessionRef.current[historyKey] ?? [])
+    setHistoryCursor(null)
+    historyDraftRef.current = null
+    prevSessionIdRef.current = activeSessionId
+  }, [activeSessionId])
+
   // Consume pendingInsertText from FileTree clicks
   const pendingInsert = useUIStore((s) => s.pendingInsertText)
   React.useEffect(() => {
     if (pendingInsert) {
+      clearHistoryNavigation()
       setText((prev) => {
         const prefix = prev && !prev.endsWith(' ') && !prev.endsWith('\n') ? ' ' : ''
         return `${prev}${prefix}${pendingInsert}`
       })
       useUIStore.getState().setPendingInsertText(null)
-      textareaRef.current?.focus()
+      requestAnimationFrame(() => {
+        resizeTextarea()
+        focusInputAtEnd()
+      })
     }
-  }, [pendingInsert])
+  }, [pendingInsert, clearHistoryNavigation, focusInputAtEnd, resizeTextarea])
 
   // --- Image helpers ---
   const addImages = React.useCallback(async (files: File[]) => {
     const results = await Promise.all(files.map(fileToImageAttachment))
     const valid = results.filter(Boolean) as ImageAttachment[]
-    if (valid.length > 0) setAttachedImages((prev) => [...prev, ...valid])
-  }, [])
+    if (valid.length > 0) {
+      clearHistoryNavigation()
+      setAttachedImages((prev) => [...prev, ...valid])
+    }
+  }, [clearHistoryNavigation])
 
   const removeImage = React.useCallback((id: string) => {
+    clearHistoryNavigation()
     setAttachedImages((prev) => prev.filter((img) => img.id !== id))
-  }, [])
+  }, [clearHistoryNavigation])
 
   const handleSend = (): void => {
     const trimmed = text.trim()
@@ -308,6 +432,20 @@ export function InputArea({
       ? `[Skill: ${selectedSkill}]\n${trimmed}`
       : trimmed
     onSend(message, attachedImages.length > 0 ? attachedImages : undefined)
+    updateSessionHistory((prevHistory) => {
+      const nextHistory = [
+        ...prevHistory,
+        {
+          text: message,
+          images: cloneImages(attachedImages),
+        },
+      ]
+      return nextHistory.length > INPUT_HISTORY_LIMIT
+        ? nextHistory.slice(nextHistory.length - INPUT_HISTORY_LIMIT)
+        : nextHistory
+    })
+    setHistoryCursor(null)
+    historyDraftRef.current = null
     setText('')
     setAttachedImages([])
     setSelectedSkill(null)
@@ -317,22 +455,41 @@ export function InputArea({
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent): void => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (e.nativeEvent.isComposing) return
+    if (
+      !e.altKey &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.shiftKey &&
+      (e.key === 'ArrowUp' || e.key === 'ArrowDown')
+    ) {
+      const target = e.currentTarget
+      const selectionStart = target.selectionStart ?? 0
+      const selectionEnd = target.selectionEnd ?? 0
+      const isCollapsed = selectionStart === selectionEnd
+      if (isCollapsed && e.key === 'ArrowUp' && selectionStart === 0) {
+        e.preventDefault()
+        navigateHistory('up')
+        return
+      }
+      if (isCollapsed && e.key === 'ArrowDown' && selectionStart === target.value.length) {
+        e.preventDefault()
+        navigateHistory('down')
+        return
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       if (isStreaming) return
       handleSend()
-    }
-    // Ctrl+Enter also sends
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault()
-      if (isStreaming) return
-      handleSend()
+      return
     }
   }
 
   // Auto-resize textarea
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
+    clearHistoryNavigation()
     setText(e.target.value)
     const el = e.target
     el.style.height = 'auto'

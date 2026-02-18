@@ -5,6 +5,8 @@ import type { ToolCallState } from '../lib/agent/types'
 import type { SubAgentEvent } from '../lib/agent/sub-agents/types'
 import type { ToolResultContent } from '../lib/api/types'
 import { ipcStorage } from '../lib/ipc/ipc-storage'
+import { ipcClient } from '../lib/ipc/ipc-client'
+import { IPC } from '../lib/ipc/channels'
 
 // Approval resolvers live outside the store — they hold non-serializable
 // callbacks and don't need to trigger React re-renders.
@@ -19,6 +21,8 @@ const MAX_TOOL_INPUT_PREVIEW_CHARS = 8_000
 const MAX_TOOL_OUTPUT_TEXT_CHARS = 12_000
 const MAX_TOOL_ERROR_CHARS = 2_000
 const MAX_IMAGE_BASE64_CHARS = 4_096
+const MAX_BACKGROUND_PROCESS_OUTPUT_CHARS = 20_000
+const MAX_BACKGROUND_PROCESS_ENTRIES = 120
 
 function truncateText(value: string, max: number): string {
   if (value.length <= max) return value
@@ -132,6 +136,67 @@ function trimSubAgentHistory(history: SubAgentState[]): void {
   history.splice(0, history.length - MAX_SUBAGENT_HISTORY)
 }
 
+export interface BackgroundProcessState {
+  id: string
+  command: string
+  cwd?: string
+  sessionId?: string
+  toolUseId?: string
+  description?: string
+  source?: string
+  status: 'running' | 'exited' | 'stopped' | 'error'
+  output: string
+  port?: number
+  exitCode?: number | null
+  createdAt: number
+  updatedAt: number
+}
+
+interface ProcessListItem {
+  id: string
+  command: string
+  cwd?: string
+  port?: number
+  createdAt?: number
+  running?: boolean
+  exitCode?: number | null
+  metadata?: {
+    source?: string
+    sessionId?: string
+    toolUseId?: string
+    description?: string
+  }
+}
+
+interface ProcessOutputEvent {
+  id: string
+  data?: string
+  port?: number
+  exited?: boolean
+  exitCode?: number | null
+  metadata?: {
+    source?: string
+    sessionId?: string
+    toolUseId?: string
+    description?: string
+  }
+}
+
+function appendBackgroundOutput(existing: string, chunk: string): string {
+  const next = `${existing}${chunk}`
+  if (next.length <= MAX_BACKGROUND_PROCESS_OUTPUT_CHARS) return next
+  return truncateText(next, MAX_BACKGROUND_PROCESS_OUTPUT_CHARS)
+}
+
+function trimBackgroundProcessMap(map: Record<string, BackgroundProcessState>): void {
+  const entries = Object.entries(map).sort((a, b) => a[1].updatedAt - b[1].updatedAt)
+  if (entries.length <= MAX_BACKGROUND_PROCESS_ENTRIES) return
+  const removeCount = entries.length - MAX_BACKGROUND_PROCESS_ENTRIES
+  for (let i = 0; i < removeCount; i++) {
+    delete map[entries[i][0]]
+  }
+}
+
 export type { SubAgentState }
 
 interface AgentStore {
@@ -153,6 +218,27 @@ interface AgentStore {
   /** Tool names approved by user during this session — auto-approve on repeat */
   approvedToolNames: string[]
   addApprovedTool: (name: string) => void
+
+  /** Background command sessions (spawned by Bash with run_in_background=true) */
+  backgroundProcesses: Record<string, BackgroundProcessState>
+  /** Foreground shell exec mapping (toolUseId -> execId), used for in-card stop actions */
+  foregroundShellExecByToolUseId: Record<string, string>
+  initBackgroundProcessTracking: () => Promise<void>
+  registerForegroundShellExec: (toolUseId: string, execId: string) => void
+  clearForegroundShellExec: (toolUseId: string) => void
+  abortForegroundShellExec: (toolUseId: string) => Promise<void>
+  registerBackgroundProcess: (process: {
+    id: string
+    command: string
+    cwd?: string
+    sessionId?: string
+    toolUseId?: string
+    description?: string
+    source?: string
+  }) => void
+  stopBackgroundProcess: (id: string) => Promise<void>
+  sendBackgroundProcessInput: (id: string, input: string, appendNewline?: boolean) => Promise<void>
+  removeBackgroundProcess: (id: string) => void
 
   setRunning: (running: boolean) => void
   setCurrentLoopId: (id: string | null) => void
@@ -176,6 +262,8 @@ interface AgentStore {
   clearPendingApprovals: () => void
 }
 
+let processTrackingInitialized = false
+
 export const useAgentStore = create<AgentStore>()(
   persist(
     immer((set) => ({
@@ -188,6 +276,8 @@ export const useAgentStore = create<AgentStore>()(
       completedSubAgents: {},
       subAgentHistory: [],
       approvedToolNames: [],
+      backgroundProcesses: {},
+      foregroundShellExecByToolUseId: {},
 
       setRunning: (running) => set({ isRunning: running }),
 
@@ -289,6 +379,187 @@ export const useAgentStore = create<AgentStore>()(
         })
       },
 
+      registerForegroundShellExec: (toolUseId, execId) => {
+        set((state) => {
+          state.foregroundShellExecByToolUseId[toolUseId] = execId
+        })
+      },
+
+      clearForegroundShellExec: (toolUseId) => {
+        set((state) => {
+          delete state.foregroundShellExecByToolUseId[toolUseId]
+        })
+      },
+
+      abortForegroundShellExec: async (toolUseId) => {
+        const execId = useAgentStore.getState().foregroundShellExecByToolUseId[toolUseId]
+        if (!execId) return
+        ipcClient.send(IPC.SHELL_ABORT, { execId })
+        set((state) => {
+          delete state.foregroundShellExecByToolUseId[toolUseId]
+        })
+      },
+
+      initBackgroundProcessTracking: async () => {
+        if (processTrackingInitialized) return
+        processTrackingInitialized = true
+
+        try {
+          const list = (await ipcClient.invoke(IPC.PROCESS_LIST)) as ProcessListItem[]
+          set((state) => {
+            for (const item of list) {
+              const existing = state.backgroundProcesses[item.id]
+              state.backgroundProcesses[item.id] = {
+                id: item.id,
+                command: item.command ?? existing?.command ?? '',
+                cwd: item.cwd ?? existing?.cwd,
+                sessionId: item.metadata?.sessionId ?? existing?.sessionId,
+                toolUseId: item.metadata?.toolUseId ?? existing?.toolUseId,
+                description: item.metadata?.description ?? existing?.description,
+                source: item.metadata?.source ?? existing?.source,
+                status: item.running === false ? 'exited' : 'running',
+                output: existing?.output ?? '',
+                port: item.port ?? existing?.port,
+                exitCode: item.exitCode ?? existing?.exitCode,
+                createdAt: item.createdAt ?? existing?.createdAt ?? Date.now(),
+                updatedAt: Date.now(),
+              }
+            }
+            trimBackgroundProcessMap(state.backgroundProcesses)
+          })
+        } catch (err) {
+          console.error('[AgentStore] Failed to load process list:', err)
+        }
+
+        ipcClient.on(IPC.PROCESS_OUTPUT, (...args: unknown[]) => {
+          const payload = args[0] as ProcessOutputEvent | undefined
+          if (!payload?.id) return
+          set((state) => {
+            const existing = state.backgroundProcesses[payload.id]
+            const now = Date.now()
+            const next: BackgroundProcessState = existing
+              ? { ...existing }
+              : {
+                  id: payload.id,
+                  command: '',
+                  cwd: undefined,
+                  sessionId: payload.metadata?.sessionId,
+                  toolUseId: payload.metadata?.toolUseId,
+                  description: payload.metadata?.description,
+                  source: payload.metadata?.source,
+                  status: payload.exited ? 'exited' : 'running',
+                  output: '',
+                  port: payload.port,
+                  exitCode: payload.exitCode,
+                  createdAt: now,
+                  updatedAt: now,
+                }
+            if (payload.data) {
+              next.output = appendBackgroundOutput(next.output, payload.data)
+            }
+            if (payload.port) next.port = payload.port
+            if (payload.metadata) {
+              next.sessionId = payload.metadata.sessionId ?? next.sessionId
+              next.toolUseId = payload.metadata.toolUseId ?? next.toolUseId
+              next.description = payload.metadata.description ?? next.description
+              next.source = payload.metadata.source ?? next.source
+            }
+            if (payload.exited) {
+              next.status = next.status === 'stopped' ? 'stopped' : 'exited'
+              next.exitCode = payload.exitCode
+            }
+            next.updatedAt = now
+            state.backgroundProcesses[payload.id] = next
+            trimBackgroundProcessMap(state.backgroundProcesses)
+          })
+        })
+      },
+
+      registerBackgroundProcess: (process) => {
+        set((state) => {
+          const now = Date.now()
+          state.backgroundProcesses[process.id] = {
+            id: process.id,
+            command: process.command,
+            cwd: process.cwd,
+            sessionId: process.sessionId,
+            toolUseId: process.toolUseId,
+            description: process.description,
+            source: process.source,
+            status: 'running',
+            output: state.backgroundProcesses[process.id]?.output ?? '',
+            port: state.backgroundProcesses[process.id]?.port,
+            exitCode: undefined,
+            createdAt: state.backgroundProcesses[process.id]?.createdAt ?? now,
+            updatedAt: now,
+          }
+          trimBackgroundProcessMap(state.backgroundProcesses)
+        })
+      },
+
+      stopBackgroundProcess: async (id) => {
+        set((state) => {
+          const process = state.backgroundProcesses[id]
+          if (!process) return
+          process.updatedAt = Date.now()
+          process.status = 'stopped'
+          process.output = appendBackgroundOutput(process.output, '\n[Stopping process...]\n')
+        })
+
+        const result = (await ipcClient.invoke(IPC.PROCESS_KILL, { id })) as {
+          success?: boolean
+          error?: string
+        }
+
+        set((state) => {
+          const process = state.backgroundProcesses[id]
+          if (!process) return
+          process.updatedAt = Date.now()
+          if (result?.success) {
+            process.output = appendBackgroundOutput(process.output, '[Stopped by user]\n')
+            return
+          }
+          if (result?.error && result.error.includes('Process not found')) {
+            process.output = appendBackgroundOutput(process.output, '[Process already exited]\n')
+            return
+          }
+          process.status = 'error'
+          process.output = appendBackgroundOutput(
+            process.output,
+            `[Stop failed: ${result?.error ?? 'Unknown error'}]\n`
+          )
+        })
+      },
+
+      sendBackgroundProcessInput: async (id, input, appendNewline = true) => {
+        const result = (await ipcClient.invoke(IPC.PROCESS_WRITE, {
+          id,
+          input,
+          appendNewline,
+        })) as { success?: boolean; error?: string }
+        set((state) => {
+          const process = state.backgroundProcesses[id]
+          if (!process) return
+          process.updatedAt = Date.now()
+          if (result?.success) {
+            const displayInput = input === '\u0003' ? '^C' : input
+            process.output = appendBackgroundOutput(process.output, `\n$ ${displayInput}\n`)
+            return
+          }
+          process.status = 'error'
+          process.output = appendBackgroundOutput(
+            process.output,
+            `\n[Input failed: ${result?.error ?? 'Unknown error'}]\n`
+          )
+        })
+      },
+
+      removeBackgroundProcess: (id) => {
+        set((state) => {
+          delete state.backgroundProcesses[id]
+        })
+      },
+
       clearToolCalls: () => {
         set((state) => {
           // Move completed SubAgents to history before clearing
@@ -302,6 +573,7 @@ export const useAgentStore = create<AgentStore>()(
           state.activeSubAgents = {}
           state.completedSubAgents = {}
           state.approvedToolNames = []
+          state.foregroundShellExecByToolUseId = {}
         })
       },
 
@@ -380,6 +652,7 @@ export const useAgentStore = create<AgentStore>()(
       },
 
       clearSessionData: (sessionId) => {
+        const processIdsToKill: string[] = []
         set((state) => {
           // Remove active subagents belonging to the session
           for (const [key, sa] of Object.entries(state.activeSubAgents)) {
@@ -392,7 +665,18 @@ export const useAgentStore = create<AgentStore>()(
           // Remove history entries belonging to the session
           state.subAgentHistory = state.subAgentHistory.filter((sa) => sa.sessionId !== sessionId)
           trimSubAgentHistory(state.subAgentHistory)
+
+          // Remove background processes bound to this session
+          for (const [key, process] of Object.entries(state.backgroundProcesses)) {
+            if (process.sessionId === sessionId) {
+              processIdsToKill.push(key)
+              delete state.backgroundProcesses[key]
+            }
+          }
         })
+        for (const id of processIdsToKill) {
+          ipcClient.invoke(IPC.PROCESS_KILL, { id }).catch(() => {})
+        }
       },
 
       clearPendingApprovals: () => {

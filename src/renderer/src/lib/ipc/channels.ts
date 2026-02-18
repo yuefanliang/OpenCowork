@@ -31,6 +31,7 @@ export const IPC = {
   // Process Management
   PROCESS_SPAWN: 'process:spawn',
   PROCESS_KILL: 'process:kill',
+  PROCESS_WRITE: 'process:write',
   PROCESS_STATUS: 'process:status',
   PROCESS_LIST: 'process:list',
   PROCESS_OUTPUT: 'process:output',

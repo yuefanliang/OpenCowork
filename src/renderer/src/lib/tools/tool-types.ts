@@ -3,6 +3,7 @@ import type { ToolDefinition, ToolResultContent } from '../api/types'
 // --- Tool Context ---
 
 export interface ToolContext {
+  sessionId?: string
   workingFolder?: string
   signal: AbortSignal
   ipc: IPCClient

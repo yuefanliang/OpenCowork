@@ -12,6 +12,7 @@ import {
   Check,
   X,
   Brain,
+  ExternalLink,
 } from 'lucide-react'
 import { nanoid } from 'nanoid'
 import { toast } from 'sonner'
@@ -200,6 +201,12 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
   const [modelSearch, setModelSearch] = useState('')
   const [editingThinkingModel, setEditingThinkingModel] = useState<AIModelConfig | null>(null)
   const [testModelId, setTestModelId] = useState(provider.models.find((m) => m.enabled)?.id ?? provider.models[0]?.id ?? '')
+  const builtinPreset = useMemo(
+    () => (provider.builtinId ? builtinProviderPresets.find((p) => p.builtinId === provider.builtinId) : undefined),
+    [provider.builtinId]
+  )
+  const apiKeyUrl = builtinPreset?.apiKeyUrl
+  const canOpenApiKeyUrl = provider.requiresApiKey !== false && !!apiKeyUrl
 
   const filteredModels = useMemo(() => {
     if (!modelSearch) return provider.models
@@ -246,10 +253,7 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
       if (models.length === 0) { toast.info(t('provider.noModelsFound')); return }
       const existingMap = new Map(provider.models.map((m) => [m.id, m]))
       // Build a map of built-in preset models for this provider (highest priority)
-      const preset = provider.builtinId
-        ? builtinProviderPresets.find((p) => p.builtinId === provider.builtinId)
-        : undefined
-      const presetMap = new Map(preset?.defaultModels.map((m) => [m.id, m]) ?? [])
+      const presetMap = new Map(builtinPreset?.defaultModels.map((m) => [m.id, m]) ?? [])
       const merged = models.map((m) => {
         const presetModel = presetMap.get(m.id)
         const existing = existingMap.get(m.id)
@@ -313,10 +317,23 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
       </div>
 
       {/* Config body */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 py-4 space-y-5">
+      <div className="flex flex-1 min-h-0 flex-col overflow-y-auto overflow-x-hidden px-5 py-4">
         {/* API Key */}
         <section className="space-y-2">
-          <label className="text-sm font-medium">{t('provider.apiKey')}</label>
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium">{t('provider.apiKey')}</label>
+            {canOpenApiKeyUrl && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 px-2 text-[11px] text-muted-foreground"
+                onClick={() => void window.electron.ipcRenderer.invoke('shell:openExternal', apiKeyUrl)}
+              >
+                <ExternalLink className="size-3" />
+                {t('provider.getApiKey')}
+              </Button>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <Input
@@ -339,11 +356,11 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
         </section>
 
         {/* Base URL */}
-        <section className="space-y-2">
+        <section className="space-y-2 mt-5">
           <label className="text-sm font-medium">{t('provider.proxyUrl')}</label>
           <Input
             placeholder={
-              builtinProviderPresets.find((p) => p.builtinId === provider.builtinId)?.defaultBaseUrl || 'https://api.example.com'
+              builtinPreset?.defaultBaseUrl || 'https://api.example.com'
             }
             value={provider.baseUrl}
             onChange={(e) => updateProvider(provider.id, { baseUrl: e.target.value })}
@@ -353,7 +370,7 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
         </section>
 
         {/* Connection check */}
-        <section className="space-y-2">
+        <section className="space-y-2 mt-5">
           <label className="text-sm font-medium">{t('provider.connectionCheck')}</label>
           <div className="flex items-center gap-2">
             <Select
@@ -384,7 +401,7 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
 
         {/* Protocol type (for custom providers) */}
         {!provider.builtinId && (
-          <section className="space-y-2">
+          <section className="space-y-2 mt-5">
             <label className="text-sm font-medium">{t('provider.protocolType')}</label>
             <Select
               value={provider.type}
@@ -402,10 +419,10 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
           </section>
         )}
 
-        <Separator />
+        <Separator className="my-5" />
 
         {/* Models */}
-        <section className="space-y-3">
+        <section className="flex min-h-0 flex-1 flex-col space-y-3">
           <div className="flex items-center justify-between">
             <div>
               <label className="text-sm font-medium">{t('provider.modelList')}</label>
@@ -472,13 +489,13 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
             </div>
           )}
 
-          <div className="rounded-lg border divide-y overflow-hidden" style={{ maxHeight: 320 }}>
+          <div className="flex min-h-0 flex-1 flex-col rounded-lg border overflow-hidden">
             {filteredModels.length === 0 ? (
-              <div className="p-6 text-center text-xs text-muted-foreground">
+              <div className="flex flex-1 items-center justify-center p-6 text-center text-xs text-muted-foreground">
                 {provider.models.length === 0 ? t('provider.noModels') : t('provider.noMatchResults')}
               </div>
             ) : (
-              <div className="overflow-y-auto divide-y" style={{ maxHeight: 320 }}>
+              <div className="flex-1 overflow-y-auto divide-y">
                 {filteredModels.map((model) => (
                   <div
                     key={model.id}

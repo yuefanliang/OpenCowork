@@ -328,6 +328,48 @@ function stripThinkTags(text: string): string {
     .trim()
 }
 
+function normalizeStructuredBlocks(blocks: ContentBlock[]): ContentBlock[] {
+  const hasStructuredThinkingBlocks = blocks.some((b) => b.type === 'thinking')
+  const normalized: ContentBlock[] = []
+
+  for (const block of blocks) {
+    if (block.type === 'text') {
+      const text = hasStructuredThinkingBlocks ? stripThinkTags(block.text) : block.text
+      if (!text.trim()) continue
+      const last = normalized[normalized.length - 1]
+      if (last && last.type === 'text') {
+        normalized[normalized.length - 1] = { ...last, text: `${last.text}${text}` }
+      } else {
+        normalized.push({ ...block, text })
+      }
+      continue
+    }
+
+    if (block.type === 'thinking') {
+      const cleanedThinking = stripThinkTagMarkers(block.thinking).trim()
+      if (!cleanedThinking) continue
+      const last = normalized[normalized.length - 1]
+      if (last && last.type === 'thinking') {
+        const separator =
+          last.thinking.endsWith('\n') || cleanedThinking.startsWith('\n') ? '' : '\n'
+        normalized[normalized.length - 1] = {
+          ...last,
+          thinking: `${last.thinking}${separator}${cleanedThinking}`,
+          startedAt: last.startedAt ?? block.startedAt,
+          completedAt: block.completedAt ?? last.completedAt
+        }
+      } else {
+        normalized.push({ ...block, thinking: cleanedThinking })
+      }
+      continue
+    }
+
+    normalized.push(block)
+  }
+
+  return normalized
+}
+
 export function AssistantMessage({
   content,
   isStreaming,
@@ -429,9 +471,11 @@ export function AssistantMessage({
       )
     }
 
-    const toolCount = content.filter((b) => b.type === 'tool_use').length
+    const normalizedContent = normalizeStructuredBlocks(content)
+    const toolCount = normalizedContent.filter((b) => b.type === 'tool_use').length
+    const hasStructuredThinkingBlocks = normalizedContent.some((b) => b.type === 'thinking')
     const lastTextIdx = isStreaming
-      ? content.reduce((acc: number, b, idx) => (b.type === 'text' ? idx : acc), -1)
+      ? normalizedContent.reduce((acc: number, b, idx) => (b.type === 'text' ? idx : acc), -1)
       : -1
 
     // Tools that have special renderers and should NOT be grouped
@@ -447,8 +491,8 @@ export function AssistantMessage({
       | { kind: 'group'; toolName: string; indices: number[] }
 
     const renderItems: RenderItem[] = []
-    for (let i = 0; i < content.length; i++) {
-      const block = content[i]
+    for (let i = 0; i < normalizedContent.length; i++) {
+      const block = normalizedContent[i]
       if (block.type === 'tool_use' && isGroupableTool(block.name)) {
         // Check if last item is a group of the same tool name
         const last = renderItems[renderItems.length - 1]
@@ -554,6 +598,7 @@ export function AssistantMessage({
       return (
         <ScaleIn key={key} className="w-full origin-left">
           <ToolCallCard
+            toolUseId={block.id}
             name={block.name}
             input={block.input}
             output={liveTc?.output ?? result?.content}
@@ -583,7 +628,7 @@ export function AssistantMessage({
         )}
         {renderItems.map((item) => {
           if (item.kind === 'block') {
-            const block = content[item.index]
+            const block = normalizedContent[item.index]
             switch (block.type) {
               case 'thinking':
                 return (
@@ -596,6 +641,21 @@ export function AssistantMessage({
                   />
                 )
               case 'text': {
+                // When provider already streamed structured thinking blocks, ignore any
+                // duplicated <think>...</think> segments embedded in text blocks.
+                if (hasStructuredThinkingBlocks) {
+                  const visibleText = stripThinkTags(block.text)
+                  if (!visibleText.trim()) return null
+                  return (
+                    <div key={item.index} className={MARKDOWN_WRAPPER_CLASS}>
+                      <StreamingMarkdownContent
+                        text={visibleText}
+                        isStreaming={item.index === lastTextIdx}
+                      />
+                    </div>
+                  )
+                }
+
                 const textSegments = parseThinkTags(block.text)
                 const hasThinkInBlock = textSegments.some((s) => s.type === 'think')
                 if (!hasThinkInBlock) {
@@ -647,7 +707,7 @@ export function AssistantMessage({
           // kind === 'group': render grouped tool calls
           if (toolsCollapsed) return null
           const groupBlocks = item.indices.map(
-            (idx) => content[idx] as Extract<ContentBlock, { type: 'tool_use' }>
+            (idx) => normalizedContent[idx] as Extract<ContentBlock, { type: 'tool_use' }>
           )
           const groupKey = `group-${item.indices[0]}`
 
@@ -659,6 +719,7 @@ export function AssistantMessage({
             return (
               <ScaleIn key={block.id} className="w-full origin-left">
                 <ToolCallCard
+                  toolUseId={block.id}
                   name={block.name}
                   input={block.input}
                   output={liveTc?.output ?? result?.content}
@@ -698,6 +759,7 @@ export function AssistantMessage({
                   return (
                     <ToolCallCard
                       key={block.id}
+                      toolUseId={block.id}
                       name={block.name}
                       input={block.input}
                       output={liveTc?.output ?? result?.content}

@@ -52,12 +52,17 @@ export function Layout(): React.JSX.Element {
   const streamingMessageId = useChatStore((s) => s.streamingMessageId)
   const pendingToolCalls = useAgentStore((s) => s.pendingToolCalls)
   const resolveApproval = useAgentStore((s) => s.resolveApproval)
+  const initBackgroundProcessTracking = useAgentStore((s) => s.initBackgroundProcessTracking)
 
   const { resolvedTheme, setTheme: ntSetTheme } = useTheme()
   const { sendMessage, stopStreaming, retryLastMessage, editAndResend } = useChatActions()
 
   const activeSubAgents = useAgentStore((s) => s.activeSubAgents)
   const runningSubAgents = Object.values(activeSubAgents).filter((sa) => sa.isRunning)
+
+  useEffect(() => {
+    void initBackgroundProcessTracking()
+  }, [initBackgroundProcessTracking])
 
   // Update window title (show pending approvals + streaming state + SubAgent)
   useEffect(() => {

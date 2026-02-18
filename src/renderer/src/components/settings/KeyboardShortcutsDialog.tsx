@@ -44,6 +44,7 @@ const shortcutGroups = [
       { keys: 'Enter', descKey: 'sendMessage' },
       { keys: 'Ctrl+Enter', descKey: 'sendMessageAlt' },
       { keys: 'Shift+Enter', descKey: 'newLine' },
+      { keys: '↑/↓', descKey: 'inputHistory' },
       { keys: 'Escape', descKey: 'stopStreaming' },
       { keys: 'Ctrl+L', descKey: 'clearConversation' },
       { keys: 'Ctrl+Shift+E', descKey: 'exportConversation' },

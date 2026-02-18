@@ -1,11 +1,27 @@
-import { MessageSquare, Briefcase, Code2, Settings, PanelRightOpen, PanelRightClose, Sun, Moon, Keyboard, Brain, Users } from 'lucide-react'
+import {
+  MessageSquare,
+  Briefcase,
+  Code2,
+  Settings,
+  PanelRightOpen,
+  PanelRightClose,
+  Sun,
+  Moon,
+  Keyboard,
+  Brain,
+  Users,
+  Terminal,
+  Square,
+} from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { SidebarTrigger } from '@renderer/components/ui/sidebar'
 import { useUIStore, type AppMode } from '@renderer/stores/ui-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useTeamStore } from '@renderer/stores/team-store'
+import { useChatStore } from '@renderer/stores/chat-store'
 import { cn } from '@renderer/lib/utils'
 import { useTheme } from 'next-themes'
 import { useTranslation } from 'react-i18next'
@@ -24,16 +40,28 @@ export function TopBar(): React.JSX.Element {
   const setMode = useUIStore((s) => s.setMode)
   const rightPanelOpen = useUIStore((s) => s.rightPanelOpen)
   const toggleRightPanel = useUIStore((s) => s.toggleRightPanel)
+  const openDetailPanel = useUIStore((s) => s.openDetailPanel)
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen)
   const setShortcutsOpen = useUIStore((s) => s.setShortcutsOpen)
   const { theme, setTheme } = useTheme()
 
+  const activeSessionId = useChatStore((s) => s.activeSessionId)
   const autoApprove = useSettingsStore((s) => s.autoApprove)
   const pendingApprovals = useAgentStore((s) => s.pendingToolCalls).length
   const errorCount = useAgentStore((s) => s.executedToolCalls.filter((t) => t.status === 'error').length)
   const activeSubAgents = useAgentStore((s) => s.activeSubAgents)
+  const backgroundProcesses = useAgentStore((s) => s.backgroundProcesses)
+  const stopBackgroundProcess = useAgentStore((s) => s.stopBackgroundProcess)
   const runningSubAgents = Object.values(activeSubAgents).filter((sa) => sa.isRunning)
   const activeTeam = useTeamStore((s) => s.activeTeam)
+  const runningBackgroundCommands = Object.values(backgroundProcesses)
+    .filter(
+      (p) =>
+        p.source === 'bash-tool' &&
+        p.status === 'running' &&
+        (!activeSessionId || p.sessionId === activeSessionId)
+    )
+    .sort((a, b) => b.createdAt - a.createdAt)
 
   const toggleTheme = (): void => {
     setTheme(theme === 'dark' ? 'light' : 'dark')
@@ -158,6 +186,61 @@ export function TopBar(): React.JSX.Element {
           </TooltipTrigger>
           <TooltipContent>{t('topbar.toolCallsFailed', { count: errorCount })}</TooltipContent>
         </Tooltip>
+      )}
+
+      {/* Background command indicator */}
+      {runningBackgroundCommands.length > 0 && (
+        <Popover>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="titlebar-no-drag h-7 gap-1.5 px-2 text-[10px]"
+                >
+                  <Terminal className="size-3.5" />
+                  {t('topbar.backgroundCommandsCount', { count: runningBackgroundCommands.length })}
+                </Button>
+              </PopoverTrigger>
+            </TooltipTrigger>
+            <TooltipContent>{t('topbar.backgroundCommandsTooltip')}</TooltipContent>
+          </Tooltip>
+          <PopoverContent align="end" className="w-[22rem] p-2">
+            <div className="mb-1 text-xs font-medium text-foreground/85">
+              {t('topbar.backgroundCommandsTitle', { count: runningBackgroundCommands.length })}
+            </div>
+            <div className="max-h-64 space-y-1 overflow-y-auto">
+              {runningBackgroundCommands.map((proc) => (
+                <div key={proc.id} className="rounded-md border px-2 py-1.5">
+                  <div className="truncate font-mono text-[11px] text-foreground/85">{proc.command}</div>
+                  {proc.cwd && (
+                    <div className="truncate text-[10px] text-muted-foreground/60">{proc.cwd}</div>
+                  )}
+                  <div className="mt-1 flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 px-1.5 text-[10px] text-muted-foreground"
+                      onClick={() => openDetailPanel({ type: 'terminal', processId: proc.id })}
+                    >
+                      {t('topbar.openSession')}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 gap-1 px-1.5 text-[10px] text-destructive/80"
+                      onClick={() => void stopBackgroundProcess(proc.id)}
+                    >
+                      <Square className="size-2.5 fill-current" />
+                      {t('topbar.stopCommand')}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
       )}
 
       {/* Theme Toggle */}

@@ -26,6 +26,46 @@ function createProviderFromPreset(preset: BuiltinProviderPreset): AIProvider {
   }
 }
 
+function normalizeProviderBaseUrl(
+  baseUrl: string,
+  requestType: ProviderConfig['type']
+): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, '')
+  if (requestType === 'anthropic') {
+    // Anthropic provider will append `/v1/messages` itself.
+    return trimmed.replace(/\/v1(?:\/messages)?$/i, '')
+  }
+  return trimmed
+}
+
+function mergeBuiltinModels(
+  existingModels: AIModelConfig[],
+  presetModels: AIModelConfig[]
+): AIModelConfig[] {
+  const existingById = new Map(existingModels.map((model) => [model.id, model]))
+  const presetIds = new Set(presetModels.map((model) => model.id))
+
+  // Keep preset order for builtin models; preserve user's enabled state.
+  const merged = presetModels.map((presetModel) => {
+    const existingModel = existingById.get(presetModel.id)
+    if (!existingModel) return { ...presetModel }
+    return {
+      ...existingModel,
+      ...presetModel,
+      enabled: existingModel.enabled,
+    }
+  })
+
+  // Keep user-added custom models that are not part of builtin preset.
+  for (const existingModel of existingModels) {
+    if (!presetIds.has(existingModel.id)) {
+      merged.push(existingModel)
+    }
+  }
+
+  return merged
+}
+
 // --- Store ---
 
 interface ProviderStore {
@@ -189,10 +229,15 @@ export const useProviderStore = create<ProviderStore>()(
         if (!activeProviderId) return null
         const provider = providers.find((p) => p.id === activeProviderId)
         if (!provider) return null
+        const activeModel = provider.models.find((m) => m.id === activeModelId)
+        const requestType = activeModel?.type ?? provider.type
+        const normalizedBaseUrl = provider.baseUrl
+          ? normalizeProviderBaseUrl(provider.baseUrl, requestType)
+          : undefined
         return {
-          type: provider.type,
+          type: requestType,
           apiKey: provider.apiKey,
-          baseUrl: provider.baseUrl || undefined,
+          baseUrl: normalizedBaseUrl,
           model: activeModelId,
           requiresApiKey: provider.requiresApiKey,
         }
@@ -203,11 +248,17 @@ export const useProviderStore = create<ProviderStore>()(
         if (!activeProviderId) return null
         const provider = providers.find((p) => p.id === activeProviderId)
         if (!provider) return null
+        const model = activeFastModelId || provider.models[0]?.id || ''
+        const fastModel = provider.models.find((m) => m.id === model)
+        const requestType = fastModel?.type ?? provider.type
+        const normalizedBaseUrl = provider.baseUrl
+          ? normalizeProviderBaseUrl(provider.baseUrl, requestType)
+          : undefined
         return {
-          type: provider.type,
+          type: requestType,
           apiKey: provider.apiKey,
-          baseUrl: provider.baseUrl || undefined,
-          model: activeFastModelId || provider.models[0]?.id || '',
+          baseUrl: normalizedBaseUrl,
+          model,
           requiresApiKey: provider.requiresApiKey,
         }
       },
@@ -254,10 +305,11 @@ export const useProviderStore = create<ProviderStore>()(
  * Safe to call multiple times — idempotent.
  */
 function ensureBuiltinPresets(): void {
-  const state = useProviderStore.getState()
-
   for (const preset of builtinProviderPresets) {
-    const existing = state.providers.find((p) => p.builtinId === preset.builtinId)
+    const existing = useProviderStore
+      .getState()
+      .providers.find((p) => p.builtinId === preset.builtinId)
+
     if (!existing) {
       const provider = createProviderFromPreset(preset)
       useProviderStore.getState().addProvider(provider)
@@ -266,27 +318,9 @@ function ensureBuiltinPresets(): void {
       if (existing.requiresApiKey !== (preset.requiresApiKey ?? true)) {
         useProviderStore.getState().updateProvider(existing.id, { requiresApiKey: preset.requiresApiKey ?? true })
       }
-      // Sync pricing & contextLength from preset to persisted models (fill missing fields only)
-      let dirty = false
-      const updatedModels = existing.models.map((m) => {
-        const presetModel = preset.defaultModels.find((pm) => pm.id === m.id)
-        if (!presetModel) return m
-        const patch: Partial<AIModelConfig> = {}
-        if (m.inputPrice == null && presetModel.inputPrice != null) patch.inputPrice = presetModel.inputPrice
-        if (m.outputPrice == null && presetModel.outputPrice != null) patch.outputPrice = presetModel.outputPrice
-        if (m.cacheCreationPrice == null && presetModel.cacheCreationPrice != null) patch.cacheCreationPrice = presetModel.cacheCreationPrice
-        if (m.cacheHitPrice == null && presetModel.cacheHitPrice != null) patch.cacheHitPrice = presetModel.cacheHitPrice
-        if (m.contextLength == null && presetModel.contextLength != null) patch.contextLength = presetModel.contextLength
-        if (m.maxOutputTokens == null && presetModel.maxOutputTokens != null) patch.maxOutputTokens = presetModel.maxOutputTokens
-        if (m.supportsVision == null && presetModel.supportsVision != null) patch.supportsVision = presetModel.supportsVision
-        if (m.supportsFunctionCall == null && presetModel.supportsFunctionCall != null) patch.supportsFunctionCall = presetModel.supportsFunctionCall
-        // Always sync thinking config from preset (API compatibility, not user preference)
-        if (presetModel.supportsThinking != null && m.supportsThinking !== presetModel.supportsThinking) patch.supportsThinking = presetModel.supportsThinking
-        if (presetModel.thinkingConfig != null) patch.thinkingConfig = presetModel.thinkingConfig
-        if (Object.keys(patch).length > 0) { dirty = true; return { ...m, ...patch } }
-        return m
-      })
-      if (dirty) {
+
+      const updatedModels = mergeBuiltinModels(existing.models, preset.defaultModels)
+      if (JSON.stringify(updatedModels) !== JSON.stringify(existing.models)) {
         useProviderStore.getState().setProviderModels(existing.id, updatedModels)
       }
     }

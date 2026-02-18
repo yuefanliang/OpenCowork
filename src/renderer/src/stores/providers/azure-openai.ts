@@ -6,6 +6,7 @@ export const azureOpenaiPreset: BuiltinProviderPreset = {
   type: 'openai-chat',
   defaultBaseUrl: '',
   homepage: 'https://azure.microsoft.com/products/ai-services/openai-service/',
+  apiKeyUrl: 'https://portal.azure.com',
   defaultModels: [
     { id: 'gpt-4o', name: 'GPT-4o', icon: 'openai', enabled: true, contextLength: 128_000, maxOutputTokens: 16_384, supportsVision: true, supportsFunctionCall: true, inputPrice: 2.5, outputPrice: 10, cacheCreationPrice: 2.5, cacheHitPrice: 1.25 },
     { id: 'gpt-4o-mini', name: 'GPT-4o Mini', icon: 'openai', enabled: true, contextLength: 128_000, maxOutputTokens: 16_384, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.15, outputPrice: 0.6, cacheCreationPrice: 0.15, cacheHitPrice: 0.075 },

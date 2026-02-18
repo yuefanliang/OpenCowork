@@ -17,8 +17,45 @@ function sanitizeOutput(raw: string, maxLen: number): string {
   return trimmed
 }
 
+async function terminateChildProcess(child: ReturnType<typeof spawn>): Promise<void> {
+  if (child.exitCode !== null) return
+
+  if (process.platform === 'win32') {
+    const pid = child.pid
+    if (pid) {
+      await new Promise<void>((resolve) => {
+        const killer = spawn('taskkill', ['/pid', String(pid), '/f', '/t'], {
+          shell: true,
+          windowsHide: true,
+        })
+        killer.on('error', () => resolve())
+        killer.on('close', () => resolve())
+      })
+      return
+    }
+  }
+
+  try {
+    child.kill('SIGTERM')
+  } catch {
+    return
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  if (child.exitCode === null) {
+    try {
+      child.kill('SIGKILL')
+    } catch {
+      // ignore
+    }
+  }
+}
+
 export function registerShellHandlers(): void {
-  const runningShellProcesses = new Map<string, ReturnType<typeof spawn>>()
+  const runningShellProcesses = new Map<
+    string,
+    { child: ReturnType<typeof spawn>; abort: () => void }
+  >()
 
   ipcMain.handle(
     'shell:exec',
@@ -39,6 +76,8 @@ export function registerShellHandlers(): void {
         let stdout = ''
         let stderr = ''
         let killed = false
+        let settled = false
+        let forceResolveTimer: ReturnType<typeof setTimeout> | null = null
 
         const child = spawn(cmd, {
           cwd: args.cwd || process.cwd(),
@@ -52,8 +91,38 @@ export function registerShellHandlers(): void {
           },
         })
 
+        const finalize = (payload: { exitCode: number; stdout: string; stderr: string; error?: string }): void => {
+          if (settled) return
+          settled = true
+          if (execId) runningShellProcesses.delete(execId)
+          if (forceResolveTimer) {
+            clearTimeout(forceResolveTimer)
+            forceResolveTimer = null
+          }
+          child.stdout?.removeAllListeners('data')
+          child.stderr?.removeAllListeners('data')
+          child.removeAllListeners('error')
+          child.removeAllListeners('close')
+          resolve(payload)
+        }
+
+        const requestAbort = (): void => {
+          if (child.exitCode !== null || settled) return
+          killed = true
+          void terminateChildProcess(child)
+          if (forceResolveTimer) return
+          forceResolveTimer = setTimeout(() => {
+            if (child.exitCode !== null || settled) return
+            finalize({
+              exitCode: 1,
+              stdout: sanitizeOutput(stdout, 50000),
+              stderr: sanitizeOutput(`${stderr}\n[Process termination timed out]`, 10000),
+            })
+          }, 2000)
+        }
+
         if (execId) {
-          runningShellProcesses.set(execId, child)
+          runningShellProcesses.set(execId, { child, abort: requestAbort })
         }
 
         const sendChunk = (chunk: string): void => {
@@ -77,8 +146,7 @@ export function registerShellHandlers(): void {
         })
 
         child.on('close', (code) => {
-          if (execId) runningShellProcesses.delete(execId)
-          resolve({
+          finalize({
             exitCode: killed ? 1 : (code ?? 0),
             stdout: sanitizeOutput(stdout, 50000),
             stderr: sanitizeOutput(stderr, 10000),
@@ -86,8 +154,7 @@ export function registerShellHandlers(): void {
         })
 
         child.on('error', (err) => {
-          if (execId) runningShellProcesses.delete(execId)
-          resolve({
+          finalize({
             exitCode: 1,
             stdout: sanitizeOutput(stdout, 50000),
             stderr: sanitizeOutput(stderr, 10000),
@@ -97,10 +164,7 @@ export function registerShellHandlers(): void {
 
         // Safety: kill on timeout
         setTimeout(() => {
-          if (child.exitCode === null) {
-            killed = true
-            child.kill('SIGTERM')
-          }
+          requestAbort()
         }, timeout)
       })
     }
@@ -109,12 +173,9 @@ export function registerShellHandlers(): void {
   ipcMain.on('shell:abort', (_event, data: { execId?: string }) => {
     const execId = data?.execId
     if (!execId) return
-    const child = runningShellProcesses.get(execId)
-    if (!child) return
-    if (child.exitCode === null) {
-      child.kill('SIGTERM')
-    }
-    runningShellProcesses.delete(execId)
+    const running = runningShellProcesses.get(execId)
+    if (!running) return
+    running.abort()
   })
 
   ipcMain.handle('shell:openPath', async (_event, folderPath: string) => {

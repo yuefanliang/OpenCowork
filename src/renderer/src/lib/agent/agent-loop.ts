@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid'
-import { parse as parsePartialJSON } from 'partial-json'
+import { Allow, parse as parsePartialJSON } from 'partial-json'
 import type { UnifiedMessage, ContentBlock, ToolUseBlock, ToolResultContent } from '../api/types'
 import { createProvider } from '../api/provider'
 import { toolRegistry } from './tool-registry'
@@ -92,7 +92,8 @@ export async function* runAgentLoop(
     while (sendAttempt < MAX_PROVIDER_RETRIES) {
       assistantContentBlocks = []
       toolCalls = []
-      let currentToolArgs = ''
+      const toolArgsById = new Map<string, string>()
+      const toolNamesById = new Map<string, string>()
       let currentToolId = ''
       let currentToolName = ''
       let streamedContent = false
@@ -129,28 +130,42 @@ export async function* runAgentLoop(
               streamedContent = true
               currentToolId = event.toolCallId!
               currentToolName = event.toolName!
-              currentToolArgs = ''
+              if (currentToolId) {
+                toolArgsById.set(currentToolId, '')
+                toolNamesById.set(currentToolId, currentToolName)
+              }
               // Immediately notify UI so it can render the tool card while args stream
               yield { type: 'tool_use_streaming_start', toolCallId: currentToolId, toolName: currentToolName }
               break
 
             case 'tool_call_delta':
               streamedContent = true
-              currentToolArgs += event.argumentsDelta ?? ''
-              // Try partial-json parse so UI can show args in real-time
-              try {
-                const partial = parsePartialJSON(currentToolArgs)
-                if (partial && typeof partial === 'object' && !Array.isArray(partial)) {
-                  yield { type: 'tool_use_args_delta', toolCallId: currentToolId, partialInput: partial as Record<string, unknown> }
+              {
+                const targetToolId = event.toolCallId || currentToolId
+                if (!targetToolId) break
+                const nextArgs = `${toolArgsById.get(targetToolId) ?? ''}${event.argumentsDelta ?? ''}`
+                toolArgsById.set(targetToolId, nextArgs)
+                const targetToolName = toolNamesById.get(targetToolId) || currentToolName
+                const partialInput = parseToolInputSnapshot(nextArgs, targetToolName)
+                if (partialInput && Object.keys(partialInput).length > 0) {
+                  yield {
+                    type: 'tool_use_args_delta',
+                    toolCallId: targetToolId,
+                    partialInput,
+                  }
                 }
-              } catch { /* incomplete JSON not yet parsable — skip */ }
+              }
               break
 
             case 'tool_call_end': {
               streamedContent = true
               const endToolId = event.toolCallId || currentToolId || nanoid()
               const endToolName = event.toolName || currentToolName
-              const toolInput = event.toolCallInput ?? safeParseJSON(currentToolArgs)
+              const rawToolArgs = toolArgsById.get(endToolId) ?? ''
+              const streamedToolInput = parseToolInputSnapshot(rawToolArgs, endToolName)
+              const mergedToolInput = mergeToolInputs(streamedToolInput, event.toolCallInput)
+              const toolInput =
+                Object.keys(mergedToolInput).length > 0 ? mergedToolInput : safeParseJSON(rawToolArgs)
               const toolUseBlock: ToolUseBlock = {
                 type: 'tool_use',
                 id: endToolId,
@@ -158,6 +173,8 @@ export async function* runAgentLoop(
                 input: toolInput,
               }
               assistantContentBlocks.push(toolUseBlock)
+              toolArgsById.delete(endToolId)
+              toolNamesById.delete(endToolId)
 
               const requiresApproval = toolRegistry.checkRequiresApproval(
                 endToolName,
@@ -197,6 +214,40 @@ export async function* runAgentLoop(
                 type: event.error?.type,
               })
           }
+        }
+
+        // Defensive: some providers may occasionally miss explicit tool_call_end.
+        // Finalize any dangling tool calls so UI/state can transition out of streaming.
+        if (toolArgsById.size > 0) {
+          for (const [danglingToolId, argsText] of toolArgsById) {
+            const danglingName = toolNamesById.get(danglingToolId) || currentToolName
+            const danglingInput = parseToolInputSnapshot(argsText, danglingName) ?? safeParseJSON(argsText)
+            const requiresApproval = toolRegistry.checkRequiresApproval(
+              danglingName,
+              danglingInput,
+              toolCtx
+            )
+            const toolUseBlock: ToolUseBlock = {
+              type: 'tool_use',
+              id: danglingToolId,
+              name: danglingName,
+              input: danglingInput,
+            }
+            assistantContentBlocks.push(toolUseBlock)
+            toolCalls.push({
+              id: danglingToolId,
+              name: danglingName,
+              input: danglingInput,
+              status: requiresApproval ? 'pending_approval' : 'running',
+              requiresApproval,
+            })
+            yield {
+              type: 'tool_use_generated',
+              toolUseBlock: { id: danglingToolId, name: danglingName, input: danglingInput },
+            }
+          }
+          toolArgsById.clear()
+          toolNamesById.clear()
         }
 
         // Successful attempt, break retry loop
@@ -356,6 +407,127 @@ function safeParseJSON(str: string): Record<string, unknown> {
   } catch {
     return {}
   }
+}
+
+function parseToolInputSnapshot(rawArgs: string, toolName: string): Record<string, unknown> | null {
+  const isWriteTool = toolName === 'Write'
+  const looseWriteInput = isWriteTool ? parseWriteInputLoosely(rawArgs) : null
+
+  try {
+    const parsed = parsePartialJSON(rawArgs, Allow.ALL)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const normalizedParsed = normalizeParsedToolInput(parsed as Record<string, unknown>)
+      if (looseWriteInput && Object.keys(looseWriteInput).length > 0) {
+        return { ...looseWriteInput, ...normalizedParsed }
+      }
+      return normalizedParsed
+    }
+  } catch {
+    // Fall through to tool-specific tolerant parsing.
+  }
+
+  if (looseWriteInput && Object.keys(looseWriteInput).length > 0) {
+    return looseWriteInput
+  }
+
+  return null
+}
+
+function normalizeParsedToolInput(input: Record<string, unknown>): Record<string, unknown> {
+  const args = input.args
+  if (
+    args &&
+    typeof args === 'object' &&
+    !Array.isArray(args) &&
+    Object.keys(input).every((key) => key === 'args')
+  ) {
+    return args as Record<string, unknown>
+  }
+  return input
+}
+
+function mergeToolInputs(
+  streamedInput: Record<string, unknown> | null,
+  providerInput?: Record<string, unknown>
+): Record<string, unknown> {
+  const normalizedProviderInput =
+    providerInput && typeof providerInput === 'object' && !Array.isArray(providerInput)
+      ? normalizeParsedToolInput(providerInput)
+      : {}
+
+  if (streamedInput && Object.keys(streamedInput).length > 0) {
+    return { ...streamedInput, ...normalizedProviderInput }
+  }
+  return normalizedProviderInput
+}
+
+function parseWriteInputLoosely(rawArgs: string): Record<string, unknown> | null {
+  const filePath =
+    readLooseJsonStringField(rawArgs, 'file_path') ?? readLooseJsonStringField(rawArgs, 'path')
+  const content = readLooseJsonStringField(rawArgs, 'content')
+
+  const input: Record<string, unknown> = {}
+  if (filePath !== null) input.file_path = filePath
+  if (content !== null) input.content = content
+  return Object.keys(input).length > 0 ? input : null
+}
+
+function readLooseJsonStringField(raw: string, key: string): string | null {
+  const keyPattern = new RegExp(`"${escapeRegExp(key)}"\\s*:\\s*"`)
+  const match = keyPattern.exec(raw)
+  if (!match) return null
+
+  let idx = match.index + match[0].length
+  let value = ''
+  let escaped = false
+
+  while (idx < raw.length) {
+    const ch = raw[idx]
+
+    if (escaped) {
+      switch (ch) {
+        case 'n':
+          value += '\n'
+          break
+        case 'r':
+          value += '\r'
+          break
+        case 't':
+          value += '\t'
+          break
+        case '"':
+          value += '"'
+          break
+        case '\\':
+          value += '\\'
+          break
+        default:
+          value += ch
+          break
+      }
+      escaped = false
+      idx++
+      continue
+    }
+
+    if (ch === '\\') {
+      escaped = true
+      idx++
+      continue
+    }
+
+    if (ch === '"') return value
+
+    value += ch
+    idx++
+  }
+
+  if (escaped) value += '\\'
+  return value
+}
+
+function escapeRegExp(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function getRetryDelay(err: unknown, attempt: number, streamedContent: boolean): number | null {

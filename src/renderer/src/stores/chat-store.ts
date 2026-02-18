@@ -710,14 +710,26 @@ export const useChatStore = create<ChatStore>()(
           msg.content = [{ type: 'thinking', thinking: cleanedThinking, startedAt: now }]
         } else {
           const blocks = msg.content as ContentBlock[]
-          const lastBlock = blocks[blocks.length - 1]
-          if (lastBlock && lastBlock.type === 'thinking') {
-            ;(lastBlock as ThinkingBlock).thinking = stripThinkTagMarkers(
-              (lastBlock as ThinkingBlock).thinking + thinking
+          const cleanedThinking = stripThinkTagMarkers(thinking)
+          if (!cleanedThinking) return
+
+          // Claude interleaved-thinking may emit text between thinking deltas.
+          // Continue writing into the latest unfinished thinking block instead
+          // of always creating a new block.
+          let targetThinkingBlock: ThinkingBlock | null = null
+          for (let i = blocks.length - 1; i >= 0; i--) {
+            const block = blocks[i]
+            if (block.type === 'thinking' && !block.completedAt) {
+              targetThinkingBlock = block as ThinkingBlock
+              break
+            }
+          }
+
+          if (targetThinkingBlock) {
+            targetThinkingBlock.thinking = stripThinkTagMarkers(
+              `${targetThinkingBlock.thinking}${cleanedThinking}`
             )
           } else {
-            const cleanedThinking = stripThinkTagMarkers(thinking)
-            if (!cleanedThinking) return
             blocks.push({ type: 'thinking', thinking: cleanedThinking, startedAt: now })
           }
         }

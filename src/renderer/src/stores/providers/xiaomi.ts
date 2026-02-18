@@ -6,6 +6,7 @@ export const xiaomiPreset: BuiltinProviderPreset = {
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.xiaomimimo.com/v1',
   homepage: 'https://platform.xiaomimimo.com/',
+  apiKeyUrl: 'https://platform.xiaomimimo.com/',
   defaultModels: [
     {
       id: 'mimo-v2-flash',
@@ -16,9 +17,8 @@ export const xiaomiPreset: BuiltinProviderPreset = {
       maxOutputTokens: 131_072,
       supportsVision: false,
       supportsFunctionCall: true,
-      inputPrice: 0.1,
-      cacheHitPrice: 0.01,
-      outputPrice: 0.3,
+      inputPrice: 0.09,
+      outputPrice: 0.29,
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: { thinking: { type: 'enabled' } },

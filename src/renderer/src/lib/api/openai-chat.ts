@@ -77,7 +77,7 @@ class OpenAIChatProvider implements APIProvider {
 
     const toolBuffers = new Map<number, { id: string; name: string; args: string }>()
 
-    for await (const sse of ipcStreamRequest({
+    streamLoop: for await (const sse of ipcStreamRequest({
       url,
       method: 'POST',
       headers,
@@ -151,12 +151,18 @@ class OpenAIChatProvider implements APIProvider {
 
           if (tc.function?.arguments) {
             buf.args += tc.function.arguments
-            yield { type: 'tool_call_delta', argumentsDelta: tc.function.arguments }
+            yield {
+              type: 'tool_call_delta',
+              toolCallId: buf.id || undefined,
+              argumentsDelta: tc.function.arguments,
+            }
           }
         }
       }
 
-      if (choice.finish_reason === 'tool_calls' || choice.finish_reason === 'function_call') {
+      const finishReason = choice.finish_reason as string | null | undefined
+
+      if (finishReason === 'tool_calls' || finishReason === 'function_call') {
         for (const [, buf] of toolBuffers) {
           if (!buf.id) continue
           try {
@@ -166,9 +172,37 @@ class OpenAIChatProvider implements APIProvider {
           }
         }
         toolBuffers.clear()
+        // Some OpenAI-compatible providers don't terminate SSE after tool_calls finish_reason.
+        // End this turn proactively to avoid hanging in "receiving args...".
+        if (!isOpenAI) break streamLoop
       }
 
-      if (choice.finish_reason === 'stop') {
+      // Compatibility fallback:
+      // Some providers incorrectly return stop/length while still buffering tool args.
+      if (
+        finishReason &&
+        finishReason !== 'tool_calls' &&
+        finishReason !== 'function_call' &&
+        toolBuffers.size > 0
+      ) {
+        for (const [, buf] of toolBuffers) {
+          if (!buf.id) continue
+          try {
+            yield {
+              type: 'tool_call_end',
+              toolCallId: buf.id,
+              toolName: buf.name,
+              toolCallInput: JSON.parse(buf.args),
+            }
+          } catch {
+            yield { type: 'tool_call_end', toolCallId: buf.id, toolName: buf.name, toolCallInput: {} }
+          }
+        }
+        toolBuffers.clear()
+        if (!isOpenAI) break streamLoop
+      }
+
+      if (finishReason === 'stop') {
         const requestCompletedAt = Date.now()
         if (data.usage) {
           outputTokens = data.usage.completion_tokens ?? outputTokens
@@ -192,6 +226,12 @@ class OpenAIChatProvider implements APIProvider {
             tps: computeTps(outputTokens, firstTokenAt, requestCompletedAt),
           },
         }
+        // OpenAI-compatible providers may keep connection open after stop.
+        if (!isOpenAI) break streamLoop
+      }
+
+      if ((finishReason === 'length' || finishReason === 'content_filter') && !isOpenAI) {
+        break streamLoop
       }
     }
 

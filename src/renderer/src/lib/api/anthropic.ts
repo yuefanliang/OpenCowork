@@ -58,7 +58,8 @@ class AnthropicProvider implements APIProvider {
     // Yield debug info for dev mode inspection
     yield { type: 'request_debug', debugInfo: { url, method: 'POST', headers: maskHeaders(headers), body: bodyStr, timestamp: Date.now() } }
 
-    let toolInputBuffer = ''
+    const toolBuffersByBlockIndex = new Map<number, string>()
+    const toolCallsByBlockIndex = new Map<number, { id: string; name: string }>()
     // Anthropic splits usage across two events:
     // - message_start → input_tokens, cache_creation_input_tokens, cache_read_input_tokens
     // - message_delta → output_tokens
@@ -97,9 +98,14 @@ class AnthropicProvider implements APIProvider {
           break
         }
 
-        case 'content_block_start':
-          if (data.content_block.type === 'tool_use') {
-            toolInputBuffer = ''
+        case 'content_block_start': {
+          const blockIndex = Number.isFinite(data.index) ? Number(data.index) : -1
+          if (data.content_block.type === 'tool_use' && blockIndex >= 0) {
+            toolBuffersByBlockIndex.set(blockIndex, '')
+            toolCallsByBlockIndex.set(blockIndex, {
+              id: data.content_block.id,
+              name: data.content_block.name,
+            })
             yield {
               type: 'tool_call_start',
               toolCallId: data.content_block.id,
@@ -108,31 +114,88 @@ class AnthropicProvider implements APIProvider {
           }
           // thinking blocks are handled via their deltas
           break
+        }
 
-        case 'content_block_delta':
+        case 'content_block_delta': {
+          const blockIndex = Number.isFinite(data.index) ? Number(data.index) : -1
           if (firstTokenAt === null) firstTokenAt = Date.now()
           if (data.delta.type === 'text_delta') {
             yield { type: 'text_delta', text: data.delta.text }
           } else if (data.delta.type === 'thinking_delta') {
             yield { type: 'thinking_delta', thinking: data.delta.thinking }
-          } else if (data.delta.type === 'input_json_delta') {
-            toolInputBuffer += data.delta.partial_json
-            yield { type: 'tool_call_delta', argumentsDelta: data.delta.partial_json }
-          }
-          break
-
-        case 'content_block_stop':
-          if (toolInputBuffer) {
-            try {
-              yield { type: 'tool_call_end', toolCallInput: JSON.parse(toolInputBuffer) }
-            } catch {
-              yield { type: 'tool_call_end', toolCallInput: {} }
+          } else if (data.delta.type === 'input_json_delta' && blockIndex >= 0) {
+            const next = `${toolBuffersByBlockIndex.get(blockIndex) ?? ''}${data.delta.partial_json}`
+            toolBuffersByBlockIndex.set(blockIndex, next)
+            const toolCall = toolCallsByBlockIndex.get(blockIndex)
+            yield {
+              type: 'tool_call_delta',
+              toolCallId: toolCall?.id,
+              argumentsDelta: data.delta.partial_json,
             }
-            toolInputBuffer = ''
           }
           break
+        }
+
+        case 'content_block_stop': {
+          const blockIndex = Number.isFinite(data.index) ? Number(data.index) : -1
+          const toolCall = blockIndex >= 0 ? toolCallsByBlockIndex.get(blockIndex) : undefined
+          if (toolCall) {
+            const raw = (toolBuffersByBlockIndex.get(blockIndex) ?? '').trim()
+            if (raw) {
+              try {
+                yield {
+                  type: 'tool_call_end',
+                  toolCallId: toolCall.id,
+                  toolName: toolCall.name,
+                  toolCallInput: JSON.parse(raw),
+                }
+              } catch {
+                yield {
+                  type: 'tool_call_end',
+                  toolCallId: toolCall.id,
+                  toolName: toolCall.name,
+                  toolCallInput: {},
+                }
+              }
+            } else {
+              // Anthropic may omit input_json_delta for empty tool input "{}".
+              yield {
+                type: 'tool_call_end',
+                toolCallId: toolCall.id,
+                toolName: toolCall.name,
+                toolCallInput: {},
+              }
+            }
+            toolBuffersByBlockIndex.delete(blockIndex)
+            toolCallsByBlockIndex.delete(blockIndex)
+          }
+          break
+        }
 
         case 'message_delta': {
+          // Defensive flush: in rare provider edge-cases a tool block can remain unclosed.
+          if (toolCallsByBlockIndex.size > 0) {
+            for (const [blockIndex, toolCall] of toolCallsByBlockIndex) {
+              const raw = (toolBuffersByBlockIndex.get(blockIndex) ?? '').trim()
+              let parsed: Record<string, unknown> = {}
+              if (raw) {
+                try {
+                  parsed = JSON.parse(raw) as Record<string, unknown>
+                } catch {
+                  parsed = {}
+                }
+              }
+              yield {
+                type: 'tool_call_end',
+                toolCallId: toolCall.id,
+                toolName: toolCall.name,
+                toolCallInput: parsed,
+              }
+            }
+            toolCallsByBlockIndex.clear()
+            toolBuffersByBlockIndex.clear()
+          }
+
           const requestCompletedAt = Date.now()
           pendingUsage.outputTokens = data.usage?.output_tokens ?? 0
           outputTokens = pendingUsage.outputTokens

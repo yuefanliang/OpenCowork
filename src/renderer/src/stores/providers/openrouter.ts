@@ -6,6 +6,7 @@ export const openrouterPreset: BuiltinProviderPreset = {
   type: 'openai-chat',
   defaultBaseUrl: 'https://openrouter.ai/api/v1',
   homepage: 'https://openrouter.ai',
+  apiKeyUrl: 'https://openrouter.ai/keys',
   defaultModels: [
     // ── Anthropic ──
     { id: 'anthropic/claude-opus-4.6', name: 'Claude Opus 4.6', icon: 'claude', enabled: true, contextLength: 1_000_000, maxOutputTokens: 16_384, supportsVision: true, supportsFunctionCall: true, inputPrice: 5, outputPrice: 25, cacheCreationPrice: 6.25, cacheHitPrice: 0.5 },
@@ -42,36 +43,36 @@ export const openrouterPreset: BuiltinProviderPreset = {
     { id: 'google/gemini-2.0-flash', name: 'Gemini 2.0 Flash', icon: 'gemini', enabled: true, contextLength: 1_048_576, maxOutputTokens: 8_192, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.1, outputPrice: 0.4 },
 
     // ── DeepSeek ──
-    { id: 'deepseek/deepseek-v3.2', name: 'DeepSeek V3.2', icon: 'deepseek', enabled: true, contextLength: 163_840, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.25, outputPrice: 0.38, cacheHitPrice: 0.125, supportsThinking: true, thinkingConfig: { bodyParams: { enable_thinking: true } } },
-    { id: 'deepseek/deepseek-r1', name: 'DeepSeek R1', icon: 'deepseek', enabled: true, contextLength: 163_840, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: false, inputPrice: 0.5, outputPrice: 2.18 },
-    { id: 'deepseek/deepseek-chat-v3.1', name: 'DeepSeek V3.1 Chat', icon: 'deepseek', enabled: true, contextLength: 131_072, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.2, outputPrice: 0.3, supportsThinking: true, thinkingConfig: { bodyParams: { enable_thinking: true } } },
+    { id: 'deepseek/deepseek-v3.2', name: 'DeepSeek V3.2', icon: 'deepseek', enabled: true, contextLength: 163_840, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.26, outputPrice: 0.38, cacheHitPrice: 0.125, supportsThinking: true, thinkingConfig: { bodyParams: { enable_thinking: true } } },
+    { id: 'deepseek/deepseek-r1', name: 'DeepSeek R1', icon: 'deepseek', enabled: true, contextLength: 163_840, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: false, inputPrice: 0.7, outputPrice: 2.5 },
+    { id: 'deepseek/deepseek-chat-v3.1', name: 'DeepSeek V3.1 Chat', icon: 'deepseek', enabled: true, contextLength: 131_072, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.15, outputPrice: 0.75, supportsThinking: true, thinkingConfig: { bodyParams: { enable_thinking: true } } },
 
     // ── Moonshot / Kimi ──
-    { id: 'moonshotai/kimi-k2.5', name: 'Kimi K2.5', icon: 'kimi', enabled: true, contextLength: 262_144, maxOutputTokens: 8_192, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.45, outputPrice: 2.25, cacheHitPrice: 0.07 },
+    { id: 'moonshotai/kimi-k2.5', name: 'Kimi K2.5', icon: 'kimi', enabled: true, contextLength: 262_144, maxOutputTokens: 8_192, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.23, outputPrice: 3 },
 
     // ── MiniMax ──
     { id: 'minimax/minimax-m2.1', name: 'MiniMax M2.1', icon: 'minimax', enabled: true, contextLength: 196_608, maxOutputTokens: 16_384, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.27, outputPrice: 0.95, cacheHitPrice: 0.03 },
     { id: 'minimax/minimax-m2.1-lightning', name: 'MiniMax M2.1 Lightning', icon: 'minimax', enabled: true, contextLength: 196_608, maxOutputTokens: 16_384, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.14, outputPrice: 0.48 },
-    { id: 'minimax/minimax-m2.5', name: 'MiniMax M2.5', icon: 'minimax', enabled: true, contextLength: 196_608, maxOutputTokens: 16_384, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.27, outputPrice: 0.95, cacheHitPrice: 0.03 },
+    { id: 'minimax/minimax-m2.5', name: 'MiniMax M2.5', icon: 'minimax', enabled: true, contextLength: 196_608, maxOutputTokens: 16_384, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.3, outputPrice: 1.1 },
 
     // ── xAI Grok ──
     { id: 'x-ai/grok-4', name: 'Grok 4', icon: 'grok', enabled: true, contextLength: 256_000, maxOutputTokens: 32_768, supportsVision: true, supportsFunctionCall: true, inputPrice: 3, outputPrice: 15 },
-    { id: 'x-ai/grok-4.1-fast', name: 'Grok 4.1 Fast', icon: 'grok', enabled: true, contextLength: 256_000, maxOutputTokens: 32_768, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.6, outputPrice: 4 },
-    { id: 'x-ai/grok-4-fast', name: 'Grok 4 Fast', icon: 'grok', enabled: true, contextLength: 256_000, maxOutputTokens: 32_768, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.6, outputPrice: 4 },
-    { id: 'x-ai/grok-code-fast-1', name: 'Grok Code Fast', icon: 'grok', enabled: true, contextLength: 256_000, maxOutputTokens: 32_768, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.6, outputPrice: 4 },
+    { id: 'x-ai/grok-4.1-fast', name: 'Grok 4.1 Fast', icon: 'grok', enabled: true, contextLength: 256_000, maxOutputTokens: 32_768, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.2, outputPrice: 0.5 },
+    { id: 'x-ai/grok-4-fast', name: 'Grok 4 Fast', icon: 'grok', enabled: true, contextLength: 256_000, maxOutputTokens: 32_768, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.2, outputPrice: 0.5 },
+    { id: 'x-ai/grok-code-fast-1', name: 'Grok Code Fast', icon: 'grok', enabled: true, contextLength: 256_000, maxOutputTokens: 32_768, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.2, outputPrice: 1.5 },
 
     // ── Z.AI / GLM (智谱) ──
-    { id: 'z-ai/glm-4.7', name: 'GLM-4.7', icon: 'chatglm', enabled: true, contextLength: 128_000, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.28, outputPrice: 1.12 },
-    { id: 'z-ai/glm-4.6', name: 'GLM-4.6', icon: 'chatglm', enabled: true, contextLength: 128_000, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.14, outputPrice: 0.56 },
-    { id: 'z-ai/glm-4.5-air', name: 'GLM-4.5 Air', icon: 'chatglm', enabled: true, contextLength: 128_000, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.07, outputPrice: 0.28 },
+    { id: 'z-ai/glm-4.7', name: 'GLM-4.7', icon: 'chatglm', enabled: true, contextLength: 128_000, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.38, outputPrice: 1.7 },
+    { id: 'z-ai/glm-4.6', name: 'GLM-4.6', icon: 'chatglm', enabled: true, contextLength: 128_000, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.35, outputPrice: 1.71 },
+    { id: 'z-ai/glm-4.5-air', name: 'GLM-4.5 Air', icon: 'chatglm', enabled: true, contextLength: 128_000, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.13, outputPrice: 0.85 },
 
     // ── Qwen ──
-    { id: 'qwen/qwen3-235b-a22b', name: 'Qwen3 235B', icon: 'qwen', enabled: true, contextLength: 131_072, maxOutputTokens: 32_768, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.25, outputPrice: 0.5, supportsThinking: true, thinkingConfig: { bodyParams: { enable_thinking: true } } },
-    { id: 'qwen/qwen3-coder-next', name: 'Qwen3 Coder Next', icon: 'qwen', enabled: true, contextLength: 262_144, maxOutputTokens: 32_768, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.16, outputPrice: 0.64, supportsThinking: true, thinkingConfig: { bodyParams: { enable_thinking: true } } },
-    { id: 'qwen/qwen3-30b-a3b', name: 'Qwen3 30B-A3B', icon: 'qwen', enabled: true, contextLength: 131_072, maxOutputTokens: 32_768, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.07, outputPrice: 0.14, supportsThinking: true, thinkingConfig: { bodyParams: { enable_thinking: true } } },
+    { id: 'qwen/qwen3-235b-a22b', name: 'Qwen3 235B', icon: 'qwen', enabled: true, contextLength: 131_072, maxOutputTokens: 32_768, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.455, outputPrice: 1.82, supportsThinking: true, thinkingConfig: { bodyParams: { enable_thinking: true } } },
+    { id: 'qwen/qwen3-coder-next', name: 'Qwen3 Coder Next', icon: 'qwen', enabled: true, contextLength: 262_144, maxOutputTokens: 32_768, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.12, outputPrice: 0.75, supportsThinking: true, thinkingConfig: { bodyParams: { enable_thinking: true } } },
+    { id: 'qwen/qwen3-30b-a3b', name: 'Qwen3 30B-A3B', icon: 'qwen', enabled: true, contextLength: 131_072, maxOutputTokens: 32_768, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.08, outputPrice: 0.28, supportsThinking: true, thinkingConfig: { bodyParams: { enable_thinking: true } } },
 
     // ── Meta Llama ──
-    { id: 'meta-llama/llama-4-maverick', name: 'Llama 4 Maverick', icon: 'meta', enabled: true, contextLength: 1_048_576, maxOutputTokens: 16_384, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.22, outputPrice: 0.88 },
+    { id: 'meta-llama/llama-4-maverick', name: 'Llama 4 Maverick', icon: 'meta', enabled: true, contextLength: 1_048_576, maxOutputTokens: 16_384, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.15, outputPrice: 0.6 },
 
     // ── Mistral ──
     { id: 'mistralai/devstral-small', name: 'Devstral Small', icon: 'mistral', enabled: true, contextLength: 131_072, maxOutputTokens: 32_768, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.1, outputPrice: 0.3 },
@@ -79,7 +80,7 @@ export const openrouterPreset: BuiltinProviderPreset = {
 
     // ── ByteDance / StepFun / Tencent ──
     { id: 'stepfun-ai/step3', name: 'Step 3', icon: 'stepfun', enabled: true, contextLength: 256_000, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.56, outputPrice: 2.24 },
-    { id: 'tencent/hunyuan-a13b-instruct', name: 'Hunyuan A13B', icon: 'hunyuan', enabled: true, contextLength: 131_072, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.14, outputPrice: 0.42 },
+    { id: 'tencent/hunyuan-a13b-instruct', name: 'Hunyuan A13B', icon: 'hunyuan', enabled: true, contextLength: 131_072, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0.14, outputPrice: 0.57 },
 
     // ── Free models ──
     {
@@ -91,9 +92,8 @@ export const openrouterPreset: BuiltinProviderPreset = {
       maxOutputTokens: 131072,
       supportsVision: false,
       supportsFunctionCall: true,
-      inputPrice: 0.1,
-      cacheHitPrice: 0.01,
-      outputPrice: 0.3
+      inputPrice: 0.09,
+      outputPrice: 0.29
     },
     { id: 'nvidia/nemotron-nano-9b-v2:free', name: 'Nemotron Nano 9B (Free)', icon: 'nvidia', enabled: true, contextLength: 131_072, maxOutputTokens: 8_192, supportsVision: false, supportsFunctionCall: true, inputPrice: 0, outputPrice: 0 },
   ],

@@ -232,11 +232,12 @@ class OpenAIResponsesProvider implements APIProvider {
   formatTools(tools: ToolDefinition[]): unknown[] {
     return tools.map((t) => ({
       type: 'function',
-      function: {
-        name: t.name,
-        description: t.description,
-        parameters: t.inputSchema,
-      },
+      // Responses API uses internally tagged function tools (top-level name/parameters).
+      name: t.name,
+      description: t.description,
+      parameters: t.inputSchema,
+      // Keep non-strict behavior for existing tool schemas (Chat Completions parity).
+      strict: false,
     }))
   }
 }

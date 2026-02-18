@@ -25,6 +25,7 @@ import { PluginManager } from './plugins/plugin-manager'
 import { registerMcpHandlers } from './ipc/mcp-handlers'
 import { McpManager } from './mcp/mcp-manager'
 import { closeDb } from './db/database'
+import { writeCrashLog, getCrashLogDir } from './crash-logger'
 
 import { createFeishuService } from './plugins/providers/feishu/feishu-service'
 import { createDingTalkService } from './plugins/providers/dingtalk/dingtalk-service'
@@ -39,6 +40,10 @@ let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isQuiting = false
 
+function recordCrash(event: string, details: unknown): void {
+  writeCrashLog(event, details)
+}
+
 function configureChromiumCachePaths(): void {
   const sessionDataPath = join(app.getPath('userData'), 'session-data')
   const diskCachePath = join(sessionDataPath, 'Cache')
@@ -50,6 +55,7 @@ function configureChromiumCachePaths(): void {
     app.commandLine.appendSwitch('disk-cache-dir', diskCachePath)
   } catch (error) {
     console.error('[Main] Failed to configure Chromium cache paths:', error)
+    recordCrash('configure_chromium_cache_failed', { error })
   }
 }
 
@@ -221,6 +227,44 @@ function createWindow(): void {
 
   })
 
+  window.webContents.on('render-process-gone', (_event, details) => {
+    const crashInfo = {
+      windowId: window.id,
+      webContentsId: window.webContents.id,
+      url: window.webContents.getURL(),
+      details,
+    }
+    console.error('[Main] Window render process gone:', crashInfo)
+    recordCrash('window_render_process_gone', crashInfo)
+  })
+
+  window.webContents.on('unresponsive', () => {
+    const hangInfo = {
+      windowId: window.id,
+      webContentsId: window.webContents.id,
+      url: window.webContents.getURL(),
+    }
+    console.error('[Main] Renderer became unresponsive:', hangInfo)
+    recordCrash('window_renderer_unresponsive', hangInfo)
+  })
+
+  window.webContents.on(
+    'did-fail-load',
+    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (!isMainFrame || errorCode === -3) return
+      const failInfo = {
+        windowId: window.id,
+        webContentsId: window.webContents.id,
+        url: window.webContents.getURL(),
+        validatedURL,
+        errorCode,
+        errorDescription,
+      }
+      console.error('[Main] Renderer failed to load:', failInfo)
+      recordCrash('window_did_fail_load', failInfo)
+    }
+  )
+
 
 
   // HMR for renderer base on electron-vite cli.
@@ -249,14 +293,21 @@ function createWindow(): void {
 
 process.on('uncaughtException', (err) => {
 
-  console.error('[Main] Uncaught exception:', err.message)
+  console.error('[Main] Uncaught exception:', err)
+  recordCrash('main_uncaught_exception', { error: err })
 
 })
 
 process.on('unhandledRejection', (reason) => {
 
   console.error('[Main] Unhandled rejection:', reason)
+  recordCrash('main_unhandled_rejection', { reason })
 
+})
+
+app.on('child-process-gone', (_event, details) => {
+  console.error('[Main] App child-process-gone:', details)
+  recordCrash('app_child_process_gone', { details })
 })
 
 configureChromiumCachePaths()
@@ -272,6 +323,12 @@ if (gotSingleInstanceLock) {
   })
 
   app.whenReady().then(() => {
+
+  recordCrash('app_started', {
+    userDataPath: app.getPath('userData'),
+    crashLogDir: getCrashLogDir(),
+  })
+  console.log(`[CrashLogger] Logs will be written to ${getCrashLogDir()}`)
 
   // Set app user model id for windows
 

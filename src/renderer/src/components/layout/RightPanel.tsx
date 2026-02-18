@@ -42,6 +42,14 @@ export function RightPanel({ compact = false }: { compact?: boolean }): React.JS
   const teamToolsEnabled = useSettingsStore((s) => s.teamToolsEnabled)
 
   const activeSessionId = useChatStore((s) => s.activeSessionId)
+  const runningCommandCount = useAgentStore((s) =>
+    Object.values(s.backgroundProcesses).filter(
+      (p) =>
+        p.source === 'bash-tool' &&
+        p.status === 'running' &&
+        (!activeSessionId || p.sessionId === activeSessionId)
+    ).length
+  )
   const hasPlan = usePlanStore((s) => {
     if (!activeSessionId) return false
     return Object.values(s.plans).some((p) => p.sessionId === activeSessionId)
@@ -57,6 +65,7 @@ export function RightPanel({ compact = false }: { compact?: boolean }): React.JS
     plan: hasPlan ? 1 : 0,
     team: activeTeam ? activeTeam.members.length : 0,
     artifacts: executedToolCalls.filter((tc) => ALL_FILE_TOOLS.has(tc.name)).length,
+    context: runningCommandCount,
   }
 
   return (

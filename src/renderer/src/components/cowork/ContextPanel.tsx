@@ -8,6 +8,7 @@ import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { useTeamStore } from '@renderer/stores/team-store'
+import { useUIStore } from '@renderer/stores/ui-store'
 import { formatTokens, calculateCost, formatCost } from '@renderer/lib/format-tokens'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { useChatActions } from '@renderer/hooks/use-chat-actions'
@@ -24,10 +25,21 @@ export function ContextPanel(): React.JSX.Element {
   const activeSessionId = useChatStore((s) => s.activeSessionId)
   const activeSession = sessions.find((s) => s.id === activeSessionId)
   const workingFolder = activeSession?.workingFolder
+  const backgroundProcesses = useAgentStore((s) => s.backgroundProcesses)
+  const stopBackgroundProcess = useAgentStore((s) => s.stopBackgroundProcess)
+  const openDetailPanel = useUIStore((s) => s.openDetailPanel)
   const activeProvider = useProviderStore((s) => s.getActiveProvider())
   const activeModelCfg = useProviderStore((s) => s.getActiveModelConfig())
   const provider = activeProvider?.name ?? useSettingsStore((s) => s.provider)
   const model = activeModelCfg?.name ?? useSettingsStore((s) => s.model)
+  const runningCommands = Object.values(backgroundProcesses)
+    .filter(
+      (p) =>
+        p.source === 'bash-tool' &&
+        p.status === 'running' &&
+        (!activeSessionId || p.sessionId === activeSessionId)
+    )
+    .sort((a, b) => b.createdAt - a.createdAt)
 
   const handleSelectFolder = async (): Promise<void> => {
     const result = (await ipcClient.invoke('fs:select-folder')) as {
@@ -175,6 +187,44 @@ export function ContextPanel(): React.JSX.Element {
                 <Cpu className="size-3 shrink-0" />
                 <span className="truncate">{model} ({provider})</span>
               </div>
+              {runningCommands.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Wrench className="size-3 shrink-0" />
+                    <span>{t('context.runningCommands', { count: runningCommands.length })}</span>
+                  </div>
+                  <div className="space-y-1">
+                    {runningCommands.map((proc) => (
+                      <div key={proc.id} className="rounded-md border px-2 py-1.5 text-[11px]">
+                        <div className="truncate font-mono text-foreground/85">{proc.command}</div>
+                        {proc.cwd && (
+                          <div className="truncate text-muted-foreground/50">{proc.cwd}</div>
+                        )}
+                        <div className="mt-1 flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground"
+                            onClick={() =>
+                              openDetailPanel({ type: 'terminal', processId: proc.id })
+                            }
+                          >
+                            {t('context.openSession')}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-5 gap-1 px-1.5 text-[10px] text-destructive/80"
+                            onClick={() => void stopBackgroundProcess(proc.id)}
+                          >
+                            {t('context.stopCommand')}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {(() => {
                 const totals = activeSession.messages.reduce(
                   (acc, m) => {

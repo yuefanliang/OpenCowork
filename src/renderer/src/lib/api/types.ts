@@ -155,6 +155,8 @@ export interface AIModelConfig {
   id: string
   name: string
   enabled: boolean
+  /** Optional protocol override for this model; falls back to provider.type when omitted */
+  type?: ProviderType
   /** Icon key for model-level icon (e.g. 'openai', 'claude', 'gemini', 'deepseek') */
   icon?: string
   contextLength?: number

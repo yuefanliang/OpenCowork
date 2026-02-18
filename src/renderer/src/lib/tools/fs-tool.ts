@@ -51,11 +51,22 @@ const writeHandler: ToolHandler = {
     },
   },
   execute: async (input, ctx) => {
+    if (typeof input.file_path !== 'string' || input.file_path.trim().length === 0) {
+      throw new Error('Write requires a non-empty "file_path" string')
+    }
+    if (typeof input.content !== 'string') {
+      throw new Error('Write requires a "content" string')
+    }
+
     const result = await ctx.ipc.invoke(IPC.FS_WRITE_FILE, {
       path: input.file_path,
       content: input.content,
     })
-    return JSON.stringify({ success: true, result })
+    if (isErrorResult(result)) {
+      throw new Error(`Write failed: ${result.error}`)
+    }
+
+    return JSON.stringify({ success: true, path: input.file_path })
   },
   requiresApproval: (input, ctx) => {
     // Writing outside working folder requires approval
@@ -142,4 +153,10 @@ export function registerFsTools(): void {
   toolRegistry.register(writeHandler)
   toolRegistry.register(editHandler)
   toolRegistry.register(lsHandler)
+}
+
+function isErrorResult(value: unknown): value is { error: string } {
+  if (!value || typeof value !== 'object') return false
+  const error = (value as { error?: unknown }).error
+  return typeof error === 'string' && error.length > 0
 }

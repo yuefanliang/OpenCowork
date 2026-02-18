@@ -423,12 +423,22 @@ export function FileChangeCard({
       {/* Error / output feedback */}
       {error && (
         <div className="border-t border-destructive/20 px-3 py-1.5 bg-destructive/5">
-          <p className="text-[11px] text-destructive truncate">{error}</p>
+          <p
+            className="text-[11px] text-destructive font-mono whitespace-pre-wrap break-words"
+            style={{ fontFamily: MONO_FONT }}
+          >
+            {error}
+          </p>
         </div>
       )}
       {outputStr && !error && isOutputError && !isSuccess && (
         <div className="border-t border-destructive/20 px-3 py-1.5 bg-destructive/5">
-          <p className="text-[11px] text-destructive/80 font-mono truncate">{outputStr.slice(0, 120)}</p>
+          <p
+            className="text-[11px] text-destructive/80 font-mono whitespace-pre-wrap break-words"
+            style={{ fontFamily: MONO_FONT }}
+          >
+            {outputStr.length > 500 ? `${outputStr.slice(0, 500)}...` : outputStr}
+          </p>
         </div>
       )}
     </div>
