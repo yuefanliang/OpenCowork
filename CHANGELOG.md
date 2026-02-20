@@ -7,24 +7,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 - **Multi-platform messaging plugins** — new Discord, Telegram, WeCom (企业微信), and WhatsApp provider implementations, each with WebSocket message parsing, API wrappers, and service classes. All providers extend a shared `BasePluginService` + `WebSocketTransport` abstraction for consistent lifecycle management and auto-reconnect.
-- **Plugin auto-reply pipeline** — `auto-reply.ts` routes incoming plugin messages to per-user/per-group sessions and triggers the Agent Loop for autonomous replies; renderer-side `use-plugin-auto-reply` hook manages the full approval + execution flow.
-- **Cron scheduling system** — persistent `node-cron` scheduler (`cron-scheduler.ts`) with SQLite-backed job storage, IPC handlers, and renderer tools (`CronAdd`/`CronUpdate`/`CronDelete`/`CronList`). Supports one-shot (`at`), fixed-interval (`every`), and cron-expression schedules. Dedicated `CronAgent` sub-agent runs tasks autonomously on trigger.
+- **Plugin auto-reply pipeline** — `auto-reply.ts` routes incoming plugin messages to per-user/per-group sessions and triggers the Agent Loop for autonomous replies; renderer-side `use-plugin-auto-reply` hook manages the full approval + execution flow. Includes `forceApproval` mode that gates all tool calls through user permission when running on behalf of plugin messages.
+- **Per-session provider binding** — sessions can now bind a specific `providerId` + `modelId`, allowing plugin auto-reply sessions to use a dedicated model instead of the global active provider. DB schema extended with `provider_id`, `model_id`, and `external_chat_id` columns.
+- **Cron scheduling system** — persistent `node-cron` scheduler (`cron-scheduler.ts`) with SQLite-backed job storage, IPC handlers, and renderer tools (`CronAdd`/`CronUpdate`/`CronDelete`/`CronList`). Supports one-shot (`at`), fixed-interval (`every`), and cron-expression schedules. Dedicated `CronAgent` sub-agent runs tasks autonomously on trigger. Cron jobs support plugin routing via `plugin_id`/`plugin_chat_id` for delivering results to messaging platforms.
 - **Cron management UI** — full `CronPanel` in the cowork sidebar with job list, status badges, run history, and inline editing controls.
 - **Notify tool & toast system** — `Notify` tool sends desktop toast notifications or injects messages into sessions; `NotifyWindow` renders a standalone overlay with progress bars, auto-dismiss, and pin support.
 - **Browser Session Crawler skill** — Playwright-based crawling skill that reuses Chrome/Edge login sessions, with pre-built scripts for Xiaohongshu and Zhihu.
 - **Extended file preview viewers** — new DOCX, PDF, image, and Markdown viewers registered alongside the existing spreadsheet viewer.
-- **Feishu rich messaging API** — expanded `feishu-api.ts` with group list, message history, user info, and reply capabilities.
+- **Feishu rich messaging API** — expanded `feishu-api.ts` with group list, message history, user info, reply capabilities, and file/image send tools (`FeishuSendFile`, `FeishuSendImage`).
+- **`CLAUDE.md` project guide** — comprehensive architecture reference and development instructions for AI-assisted coding.
+- **External `triggerSendMessage` entry point** — allows plugin auto-reply and other non-hook callers to invoke `sendMessage` from outside the React hook lifecycle.
 
 ### Changed
-- **Plugin architecture refactored** — extracted `BasePluginService` base class and `WebSocketTransport` utility; DingTalk and Feishu services migrated to the shared abstraction with dedicated `WsMessageParser` modules.
+- **Plugin architecture refactored** — extracted `BasePluginService` base class and `WebSocketTransport` utility; DingTalk and Feishu services migrated to the shared abstraction with dedicated `WsMessageParser` modules. Plugin store uses window-level flags to prevent HMR duplicate listener registration; enabling a plugin now auto-activates it.
 - **Plugin settings UI overhauled** — `PluginPanel` redesigned with per-provider configuration forms, auto-reply toggles, connection status indicators, and group/contact management for all six providers.
-- **System prompt enhancements** — dynamic context injection expanded; agent loop and sub-agent definitions updated for cron and plugin awareness.
+- **System prompt major overhaul** — "Think Before Acting" expanded to a 6-step process (Understand → Scope → Plan → Risk check → Act → Verify); added output calibration examples; code safety rules (XSS, injection, secrets); tool anti-pattern guidelines; API and Shell security rules; plugin file-delivery instructions injected when Feishu is active.
+- **Agent Teams prompt dynamically trimmed** — full team workflow instructions only injected when a team is active; otherwise a compact summary is used, reducing idle token overhead.
+- **Dynamic context injection on every message** — previously only injected on the first user message per session; now injected on every turn. Removed bilingual logic (unified to English). Added timestamp to context header.
+- **Session switching loads per-session tasks** — `setActiveSession` now triggers `loadTasksForSession` and `switchToolCallSession` so the task list and tool call panel reflect the active session immediately.
+- **Queued message priority** — at `iteration_end`, if queued user messages exist the agent loop is aborted early so the next queued message is dispatched immediately instead of waiting for another LLM round-trip.
+- **`<system-remind>` → `<system-reminder>`** — tag name unified across dynamic context, queued message reminders, and system prompt references.
 - **Spreadsheet viewer improved** — richer rendering and interaction in `spreadsheet-viewer.tsx`.
 - Locales (EN + ZH) updated with cron, notify, and new plugin strings.
 
 ### Fixed
 - **Feishu WebSocket stability** — message parsing extracted to dedicated `parse-ws-message.ts`, improving reconnect reliability and error isolation.
 - **DingTalk message parsing** — separated into standalone parser module for cleaner error handling.
+- **Plugin-created sessions not found** — when a session created by the main process (e.g. plugin auto-reply) was not yet in the renderer store, `sendMessage` now reloads sessions from DB before aborting, preventing silent message drops.
+- **Context compression respects session-bound provider** — compression now uses the session's bound `providerId`/`modelId` instead of always falling back to the global active provider.
 
 ---
 

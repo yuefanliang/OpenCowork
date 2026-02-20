@@ -749,6 +749,7 @@ export const useAgentStore = create<AgentStore>()(
       partialize: (state) => ({
         completedSubAgents: state.completedSubAgents,
         subAgentHistory: state.subAgentHistory,
+        approvedToolNames: state.approvedToolNames,
       }),
     }
   )
