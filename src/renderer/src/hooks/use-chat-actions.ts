@@ -794,13 +794,29 @@ export function useChatActions(): {
         userPrompt = userPrompt ? `${userPrompt}\n${pluginCtx}` : pluginCtx
       }
 
+      // Load AGENTS.md memory file from working directory
+      let agentsMemory: string | undefined
+      if (session?.workingFolder) {
+        try {
+          const sep = session.workingFolder.includes('\\') ? '\\' : '/'
+          const memoryPath = `${session.workingFolder}${sep}AGENTS.md`
+          const content = await ipcClient.invoke('fs:read-file', { path: memoryPath })
+          if (typeof content === 'string' && content.trim()) {
+            agentsMemory = content
+          }
+        } catch {
+          // AGENTS.md doesn't exist yet — that's fine
+        }
+      }
+
       const agentSystemPrompt = buildSystemPrompt({
         mode: mode as 'cowork' | 'code',
         workingFolder: session?.workingFolder,
         userSystemPrompt: userPrompt || undefined,
         toolDefs: finalEffectiveToolDefs,
         language: useSettingsStore.getState().language,
-        planMode: isPlanMode
+        planMode: isPlanMode,
+        agentsMemory
       })
       const agentProviderConfig: ProviderConfig = {
         ...baseProviderConfig,

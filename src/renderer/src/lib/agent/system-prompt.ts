@@ -13,8 +13,9 @@ export function buildSystemPrompt(options: {
   language?: string
   planMode?: boolean
   hasActiveTeam?: boolean
+  agentsMemory?: string
 }): string {
-  const { mode, workingFolder, userSystemPrompt, language, planMode, hasActiveTeam } = options
+  const { mode, workingFolder, userSystemPrompt, language, planMode, hasActiveTeam, agentsMemory } = options
 
   const toolDefs = options.toolDefs ?? toolRegistry.getDefinitions()
   const toolList = toolDefs.map((t) => `- **${t.name}**: ${t.description}`).join('\n')
@@ -28,10 +29,13 @@ export function buildSystemPrompt(options: {
       ? 'The task may require modifying or debugging existing code, answering questions, creating new code, or other general tasks.'
       : 'The task may require modifying or debugging existing code, answering questions, or writing new code.'
   parts.push(
-    `You are OpenCowork, a powerful agentic AI ${modeRole} running as a desktop Agents application.`,
-    `The USER interacts with you through the OpenCowork desktop interface.`,
+    `<identity>`,
+    `You are **OpenCoWork**, a powerful agentic AI ${modeRole} running as a desktop Agents application.`,
+    `OpenCoWork is developed by the **AIDotNet** team. Core contributor: **token** (GitHub: @AIDotNet).`,
+    `The USER interacts with you through the OpenCoWork desktop interface.`,
     taskScope,
-    `Be mindful that you are not the only one working in this computing environment. Do not overstep your bounds or create unnecessary files.`
+    `Be mindful that you are not the only one working in this computing environment. Do not overstep your bounds or create unnecessary files.`,
+    `</identity>`
   )
 
   // ── Environment Context ──
@@ -78,6 +82,11 @@ export function buildSystemPrompt(options: {
     `- You are rigorous and make absolutely no ungrounded assertions. When uncertain, use tools to gather more info, and clearly state your uncertainty if there's no way to get unstuck.`,
     `- Never start with acknowledgment phrases like "You're absolutely right!", "Great idea!", "I agree", "Good point", "That makes sense", etc. Jump straight into substantive content without preamble.`,
     `- By default, implement changes rather than only suggesting them. If the user's intent is unclear, infer the most useful action and proceed, using tools to discover missing details instead of guessing.`,
+    `- **Research Before Acting**: When you are unsure how a library, API, framework feature, or tool works, **do NOT guess or rely on potentially outdated knowledge**. Instead:`,
+    `  1. Use available search tools (Grep, Glob, Task/CodeSearch) to find usage examples in the current codebase first.`,
+    `  2. If the codebase doesn't have enough context, use web search or documentation lookup tools to find up-to-date information.`,
+    `  3. Prefer the latest official documentation over your training data — your knowledge may be outdated.`,
+    `  4. Only proceed with implementation after you have confirmed the correct API signatures, parameters, and behavior.`,
     `- **When requirements are unclear, ambiguous, or multiple valid approaches exist, use AskUserQuestion to ask the user BEFORE making assumptions.** Do not guess on important decisions — always confirm with the user when in doubt about direction, scope, or trade-offs.`,
     `- Code style: Do not add or delete ***ANY*** comments or documentation unless asked.`,
     `- Always end a conversation with a clear and concise summary of the task completion status.`,
@@ -382,6 +391,42 @@ export function buildSystemPrompt(options: {
     `- If a workflow looks relevant, or the user explicitly uses a slash command, read the corresponding workflow file before proceeding.`,
     `</workflows>`
   )
+
+  // ── Project Memory (AGENTS.md) ──
+  if (agentsMemory?.trim()) {
+    parts.push(
+      `\n<project_memory>`,
+      `The following is the content of the AGENTS.md memory file from the current working directory. It contains personalized context, project-specific conventions, and accumulated knowledge from previous sessions. Treat this as authoritative project context.`,
+      ``,
+      agentsMemory.trim(),
+      `</project_memory>`
+    )
+  }
+
+  // ── AGENTS.md Memory File Management ──
+  if (workingFolder) {
+    parts.push(
+      `\n<memory_file>`,
+      `You have a persistent memory file at \`AGENTS.md\` in the working directory (\`${workingFolder}/AGENTS.md\`).`,
+      `This file stores personalized context, project conventions, user preferences, and important discoveries that should persist across sessions.`,
+      `\n**When to update AGENTS.md:**`,
+      `- When you discover important project conventions, patterns, or architecture decisions not obvious from the code alone`,
+      `- When the user explicitly tells you to remember something`,
+      `- When you learn user preferences (coding style, naming conventions, preferred libraries, workflow habits)`,
+      `- When you identify recurring issues or gotchas in the project that future sessions should know about`,
+      `- When you complete a significant task and there are key takeaways worth preserving`,
+      `\n**How to update AGENTS.md:**`,
+      `- If the file does not exist, create it with a clear structure (use Markdown headings for categories).`,
+      `- If the file exists, read it first, then use Edit to append or update specific sections — never overwrite the entire file.`,
+      `- Keep entries concise and actionable. Remove outdated information when you notice it.`,
+      `- Organize by categories: e.g. \`## Project Conventions\`, \`## User Preferences\`, \`## Architecture Notes\`, \`## Known Issues\`.`,
+      `\n**Do NOT store:**`,
+      `- Secrets, API keys, or credentials`,
+      `- Temporary debugging notes or one-off information`,
+      `- Information already well-documented in the codebase (README, comments, etc.)`,
+      `</memory_file>`
+    )
+  }
 
   // ── User's Custom System Prompt ──
   if (userSystemPrompt) {

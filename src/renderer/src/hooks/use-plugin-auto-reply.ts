@@ -369,12 +369,28 @@ async function _runPluginAgent(task: PluginAutoReplyTask): Promise<void> {
   ].filter(Boolean).join('\n')
   userPrompt = userPrompt ? `${userPrompt}\n${pluginCtx}` : pluginCtx
 
+  // Load AGENTS.md memory file from working directory
+  let agentsMemory: string | undefined
+  if (session.workingFolder) {
+    try {
+      const sep = session.workingFolder.includes('\\') ? '\\' : '/'
+      const memoryPath = `${session.workingFolder}${sep}AGENTS.md`
+      const content = await ipcClient.invoke('fs:read-file', { path: memoryPath })
+      if (typeof content === 'string' && content.trim()) {
+        agentsMemory = content
+      }
+    } catch {
+      // AGENTS.md doesn't exist yet — that's fine
+    }
+  }
+
   const systemPrompt = buildSystemPrompt({
     mode: 'cowork',
     workingFolder: session.workingFolder,
     userSystemPrompt: userPrompt,
     toolDefs: allToolDefs,
     language: settings.language,
+    agentsMemory
   })
 
   // ── Build user message ──

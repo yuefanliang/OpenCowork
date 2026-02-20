@@ -6,6 +6,7 @@ import { nanoid } from 'nanoid'
 import { getDb } from '../db/database'
 import type { PluginEvent, PluginInstance, PluginIncomingMessageData } from './plugin-types'
 import type { PluginManager } from './plugin-manager'
+import { tryHandleCommand } from './plugin-commands'
 
 const PLUGINS_WORK_DIR = path.join(os.homedir(), '.open-cowork', 'plugins')
 const PLUGINS_FILE = path.join(os.homedir(), '.open-cowork', 'plugins.json')
@@ -81,6 +82,21 @@ export function handlePluginAutoReply(event: PluginEvent): void {
         db.prepare('UPDATE sessions SET title = ? WHERE id = ?').run(betterTitle, session.id)
         session.title = betterTitle
       }
+    }
+
+    // ── Command interception: handle /help, /new, /init, /status etc. before agent loop ──
+    // Always attempt command parsing — tryHandleCommand handles @mention stripping internally
+    if (_pluginManager && data.content?.trim()) {
+      const handled = tryHandleCommand({
+        pluginId,
+        pluginType: event.pluginType,
+        chatId: data.chatId,
+        data,
+        sessionId: session.id,
+        pluginWorkDir,
+        pluginManager: _pluginManager,
+      })
+      if (handled) return
     }
 
     // NOTE: We do NOT insert the user message here — the renderer's sendMessage
