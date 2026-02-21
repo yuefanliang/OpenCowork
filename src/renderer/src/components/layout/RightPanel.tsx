@@ -64,8 +64,7 @@ export function RightPanel({ compact = false }: { compact?: boolean }): React.JS
   const visibleTabs = tabDefs
     .filter((t) => teamToolsEnabled || t.value !== 'team')
     .filter((t) => (hasPlan || planMode) || t.value !== 'plan')
-    .filter((t) => t.value !== 'cron' || cronJobCount > 0 || tab === 'cron')
-    // Note: cronJobCount includes ALL jobs (enabled + disabled) so the tab stays visible
+    // Cron tab is always visible
 
   const badgeCounts: Partial<Record<RightPanelTab, number>> = {
     steps: todos.length,

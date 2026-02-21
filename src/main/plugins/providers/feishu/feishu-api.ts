@@ -172,6 +172,30 @@ export class FeishuApi {
     }
   }
 
+  /** Get user profile info (name) by ID */
+  async getUserProfile(
+    userId: string,
+    idType: 'open_id' | 'user_id' | 'union_id' = 'open_id'
+  ): Promise<{ name: string } | null> {
+    if (!userId) return null
+    try {
+      const headers = await this.authHeaders()
+      const encodedId = encodeURIComponent(userId)
+      const res = await request(
+        'GET',
+        `/open-apis/contact/v3/users/${encodedId}?user_id_type=${idType}`,
+        headers
+      )
+      const data = JSON.parse(res.body)
+      if (data.code !== 0) return null
+      return {
+        name: data.data?.user?.name ?? '',
+      }
+    } catch {
+      return null
+    }
+  }
+
   /** List chats/groups the bot is in */
   async listChats(): Promise<
     Array<{ chat_id: string; name: string; member_count?: number; raw: unknown }>

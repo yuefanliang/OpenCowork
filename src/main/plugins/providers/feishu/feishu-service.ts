@@ -63,6 +63,8 @@ export class FeishuService implements MessagingPluginService {
   private _processedMsgIds = new Set<string>()
   /** Cache: chat_id → chat name */
   private _chatNameCache = new Map<string, string>()
+  /** Cache: user_id/open_id → user display name */
+  private _userNameCache = new Map<string, string>()
   /** Bot's own open_id — fetched once at startup for reliable @mention detection */
   private _botOpenId = ''
 
@@ -118,7 +120,11 @@ export class FeishuService implements MessagingPluginService {
             const messageId = msg.message?.message_id ?? ''
             const msgType = msg.message?.message_type ?? 'text'
             const chatType = (msg.message?.chat_type ?? 'p2p') as 'p2p' | 'group'
-            const senderId = msg.sender?.sender_id?.open_id ?? msg.sender?.sender_id?.user_id ?? ''
+            const senderIds = msg.sender?.sender_id ?? {}
+            const senderOpenId = senderIds.open_id ?? ''
+            const senderUserId = senderIds.user_id ?? ''
+            const senderIdType: 'open_id' | 'user_id' = senderOpenId ? 'open_id' : 'user_id'
+            const senderId = senderOpenId || senderUserId || ''
             const mentions = msg.message?.mentions ?? []
 
             // Group chat filter: only respond when the bot is @mentioned
@@ -180,6 +186,16 @@ export class FeishuService implements MessagingPluginService {
 
             console.log(`[Feishu] ${msgType} [${chatType}] in ${chatId}: ${content.slice(0, 60)}${images ? ` [+${images.length} image(s)]` : ''}`)
 
+            // Resolve sender display name (cached) so P2P chats have proper titles
+            let senderName = senderId ? this._userNameCache.get(senderId) ?? '' : ''
+            if (!senderName && senderId) {
+              try {
+                const profile = await this.api.getUserProfile(senderId, senderIdType)
+                senderName = profile?.name?.trim() ?? ''
+                if (senderName) this._userNameCache.set(senderId, senderName)
+              } catch { /* ignore */ }
+            }
+
             // Resolve chat name (cached)
             let chatName = this._chatNameCache.get(chatId)
             if (!chatName) {
@@ -190,6 +206,10 @@ export class FeishuService implements MessagingPluginService {
               } catch { /* ignore */ }
             }
 
+            if (chatType === 'p2p' && !chatName && senderName) {
+              chatName = senderName
+            }
+
             this._notify({
               type: 'incoming_message',
               pluginId: this.pluginId,
@@ -197,7 +217,7 @@ export class FeishuService implements MessagingPluginService {
               data: {
                 chatId,
                 senderId,
-                senderName: '',
+                senderName: senderName || senderId,
                 content,
                 messageId,
                 images,

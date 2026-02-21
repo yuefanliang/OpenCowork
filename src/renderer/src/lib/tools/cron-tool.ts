@@ -27,7 +27,8 @@ const cronAddHandler: ToolHandler = {
       '   - "daily at 9am" → { kind: "cron", expr: "0 9 * * *" }\n' +
       '   - "every 15 min" → { kind: "cron", expr: "*/15 * * * *" }\n' +
       '   - "weekdays at 6pm" → { kind: "cron", expr: "0 18 * * 1-5" }\n\n' +
-      'IMPORTANT: For "in X minutes/hours" requests, ALWAYS use kind="at" with relative offset like "+10m". NEVER use ISO timestamps.',
+      'IMPORTANT: For "in X minutes/hours" requests, ALWAYS use kind="at" with relative offset like "+10m". NEVER use ISO timestamps.\n\n' +
+      'Delivery: by default, CronAgent will Notify on desktop. To force delivery through a messaging plugin (Feishu, WhatsApp, etc.), provide pluginId + pluginChatId explicitly when creating the job.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -87,6 +88,14 @@ const cronAddHandler: ToolHandler = {
           type: 'number',
           description: 'Max agent loop iterations. Default: 15.',
         },
+        pluginId: {
+          type: 'string',
+          description: 'Optional messaging plugin ID to deliver the results through (e.g. cron reminders to WhatsApp).',
+        },
+        pluginChatId: {
+          type: 'string',
+          description: 'Chat/channel ID for the messaging plugin. Required when pluginId is provided.',
+        },
       },
       required: ['name', 'schedule', 'prompt'],
     },
@@ -127,6 +136,9 @@ const cronAddHandler: ToolHandler = {
       }
     }
 
+    const pluginId = input.pluginId ? String(input.pluginId) : ctx.pluginId
+    const pluginChatId = input.pluginChatId ? String(input.pluginChatId) : ctx.pluginChatId
+
     const result = await ctx.ipc.invoke(IPC.CRON_ADD, {
       name,
       sessionId: ctx.sessionId ?? null,
@@ -139,9 +151,9 @@ const cronAddHandler: ToolHandler = {
       deliveryTarget: input.deliveryTarget ? String(input.deliveryTarget) : ctx.sessionId,
       deleteAfterRun: input.deleteAfterRun,
       maxIterations: input.maxIterations,
-      // Auto-inject plugin channel info from context so cron can reply through the same plugin
-      pluginId: ctx.pluginId,
-      pluginChatId: ctx.pluginChatId,
+      // Allow explicit overrides, falling back to current plugin context when available
+      pluginId: pluginId ?? undefined,
+      pluginChatId: pluginChatId ?? undefined,
     }) as { error?: string; jobId?: string; success?: boolean }
 
     if (result.error) return JSON.stringify({ error: result.error })

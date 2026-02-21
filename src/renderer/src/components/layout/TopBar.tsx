@@ -86,7 +86,7 @@ export function TopBar(): React.JSX.Element {
                     ? 'bg-background shadow-sm ring-1 ring-border/50'
                     : 'text-muted-foreground hover:text-foreground'
                 )}
-                onClick={() => setMode(m.value)}
+                onClick={() => { console.log('[TopBar] Mode switch clicked:', m.value); setMode(m.value) }}
               >
                 {m.icon}
                 {tCommon(m.labelKey)}

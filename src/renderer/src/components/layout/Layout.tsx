@@ -80,12 +80,14 @@ export function Layout(): React.JSX.Element {
     document.title = `${prefix}${base}`
   }, [activeSessionTitle, pendingToolCalls.length, streamingMessageId, runningSubAgents])
 
-  // Sync UI mode when switching to a session with a different mode
+  // Sync UI mode only when session info changes, so manual top-bar toggles are respected
   useEffect(() => {
-    if (activeSessionMode && activeSessionMode !== mode) {
+    if (!activeSessionMode) return
+    const currentMode = useUIStore.getState().mode
+    if (currentMode !== activeSessionMode) {
       useUIStore.getState().setMode(activeSessionMode)
     }
-  }, [activeSessionId, activeSessionMode, mode])
+  }, [activeSessionId, activeSessionMode])
 
   // Close detail/preview panels when switching sessions (they are session-specific)
   const prevActiveSessionRef = useRef<string | null>(null)

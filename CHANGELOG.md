@@ -3,6 +3,11 @@
 All notable changes to **OpenCowork** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.0] - 2026-02-21
+
+### Fixed
+- **Feishu DM title mismatch** — added `getUserProfile` and cached user display names inside the Feishu service so P2P sessions fall back to the sender's real name whenever `chatName` is missing, keeping private chat titles aligned with Feishu.
+
 ## [0.1.9] - 2026-02-20
 
 ### Fixed
