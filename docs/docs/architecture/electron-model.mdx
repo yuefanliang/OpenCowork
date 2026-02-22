@@ -1,0 +1,77 @@
+---
+title: Electron 进程模型
+description: OpenCowork 的 Electron 主进程、渲染进程和预加载脚本详解。
+---
+
+# Electron 进程模型 / Electron Process Model
+
+OpenCowork 遵循标准的 Electron 双进程架构，通过预加载脚本安全地桥接两个进程。
+
+## 主进程 / Main Process
+
+**入口**：`src/main/index.ts`
+
+主进程运行在 Node.js 环境中，负责：
+
+- 创建 `BrowserWindow`（无边框窗口）
+- 系统托盘图标管理
+- 注册所有 IPC 处理器
+- 初始化 `PluginManager` 和 `McpManager`
+- 崩溃日志记录
+
+### IPC 处理器注册
+
+```typescript
+// src/main/index.ts
+registerFsHandlers();
+registerDbHandlers();
+registerPluginHandlers();
+registerMcpHandlers();
+registerCronHandlers();
+registerSettingsHandlers();
+```
+
+## 渲染进程 / Renderer Process
+
+**入口**：`src/renderer/src/main.tsx`
+
+渲染进程运行在 Chromium 环境中，负责：
+
+- React UI 渲染
+- Agent 循环执行
+- 状态管理（Zustand）
+- 直接调用 LLM API（不经过主进程）
+
+### 多窗口支持
+
+通过 URL hash 区分窗口类型：
+
+```typescript
+// main.tsx
+if (location.hash === '#notify') {
+  render(<NotifyWindow />);
+} else {
+  render(<App />);
+}
+```
+
+## 预加载脚本 / Preload Script
+
+**入口**：`src/preload/index.ts`
+
+预加载脚本在渲染进程中运行，但有 Node.js 访问权限，通过 `contextBridge` 暴露安全的 API：
+
+```typescript
+contextBridge.exposeInMainWorld('electron', {
+  ipc: {
+    invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+    on: (channel, listener) => ipcRenderer.on(channel, listener),
+  }
+});
+```
+
+## 安全模型 / Security Model
+
+- 渲染进程禁用 `nodeIntegration`
+- 所有 Node.js 操作通过 IPC 经由主进程执行
+- IPC 通道名称集中定义在 `src/renderer/src/lib/ipc/channels.ts`

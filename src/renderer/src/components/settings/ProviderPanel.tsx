@@ -9,10 +9,9 @@ import {
   Loader2,
   Trash2,
   RefreshCw,
-  Check,
-  X,
   Brain,
   ExternalLink,
+  Pencil,
 } from 'lucide-react'
 import { nanoid } from 'nanoid'
 import { toast } from 'sonner'
@@ -41,6 +40,13 @@ import {
 import type { ProviderType, AIModelConfig, AIProvider, ThinkingConfig } from '@renderer/lib/api/types'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { ProviderIcon, ModelIcon } from './provider-icons'
+
+const MODEL_ICON_OPTIONS = [
+  'openai', 'claude', 'anthropic', 'gemini', 'deepseek', 'qwen',
+  'chatglm', 'minimax', 'kimi', 'moonshot', 'grok', 'meta', 'llama',
+  'mistral', 'baidu', 'hunyuan', 'nvidia', 'stepfun', 'doubao',
+  'ollama', 'siliconcloud', 'mimo',
+] as const
 
 // --- Fetch models from provider API ---
 
@@ -179,6 +185,216 @@ function AddProviderDialog({
   )
 }
 
+// --- Add / Edit Model Dialog ---
+
+function ModelFormDialog({
+  open,
+  onOpenChange,
+  providerType,
+  initial,
+  onSave,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  providerType: ProviderType
+  initial?: AIModelConfig
+  onSave: (model: AIModelConfig) => void
+}): React.JSX.Element {
+  const { t } = useTranslation('settings')
+  const isEdit = !!initial
+
+  const [id, setId] = useState(initial?.id ?? '')
+  const [name, setName] = useState(initial?.name ?? '')
+  const [typeOverride, setTypeOverride] = useState<ProviderType | 'none'>(initial?.type ?? 'none')
+  const [contextLength, setContextLength] = useState(initial?.contextLength?.toString() ?? '')
+  const [maxOutputTokens, setMaxOutputTokens] = useState(initial?.maxOutputTokens?.toString() ?? '')
+  const [inputPrice, setInputPrice] = useState(initial?.inputPrice?.toString() ?? '')
+  const [outputPrice, setOutputPrice] = useState(initial?.outputPrice?.toString() ?? '')
+  const [cacheCreationPrice, setCacheCreationPrice] = useState(initial?.cacheCreationPrice?.toString() ?? '')
+  const [cacheHitPrice, setCacheHitPrice] = useState(initial?.cacheHitPrice?.toString() ?? '')
+  const [supportsVision, setSupportsVision] = useState(initial?.supportsVision ?? false)
+  const [supportsFunctionCall, setSupportsFunctionCall] = useState(initial?.supportsFunctionCall ?? true)
+  const [icon, setIcon] = useState(initial?.icon ?? '')
+
+  const handleSave = (): void => {
+    if (!id.trim()) return
+    const model: AIModelConfig = {
+      id: id.trim(),
+      name: name.trim() || id.trim(),
+      enabled: initial?.enabled ?? true,
+    }
+    if (typeOverride && typeOverride !== 'none') model.type = typeOverride
+    if (contextLength.trim()) { const v = parseInt(contextLength); if (!isNaN(v)) model.contextLength = v }
+    if (maxOutputTokens.trim()) { const v = parseInt(maxOutputTokens); if (!isNaN(v)) model.maxOutputTokens = v }
+    if (inputPrice.trim()) { const v = parseFloat(inputPrice); if (!isNaN(v)) model.inputPrice = v }
+    if (outputPrice.trim()) { const v = parseFloat(outputPrice); if (!isNaN(v)) model.outputPrice = v }
+    if (cacheCreationPrice.trim()) { const v = parseFloat(cacheCreationPrice); if (!isNaN(v)) model.cacheCreationPrice = v }
+    if (cacheHitPrice.trim()) { const v = parseFloat(cacheHitPrice); if (!isNaN(v)) model.cacheHitPrice = v }
+    if (supportsVision) model.supportsVision = true
+    if (!supportsFunctionCall) model.supportsFunctionCall = false
+    if (icon.trim()) model.icon = icon.trim()
+    // preserve thinking config if editing
+    if (initial?.supportsThinking) model.supportsThinking = initial.supportsThinking
+    if (initial?.thinkingConfig) model.thinkingConfig = initial.thinkingConfig
+    onSave(model)
+    onOpenChange(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? t('provider.editModel') : t('provider.addModelTitle')}</DialogTitle>
+          <DialogDescription>
+            {isEdit ? t('provider.editModelDesc', { name: initial?.name }) : t('provider.addModelDesc')}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          {/* ID + Name */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">{t('provider.modelId')} *</label>
+              <Input
+                placeholder={t('provider.modelIdPlaceholder')}
+                value={id}
+                onChange={(e) => setId(e.target.value)}
+                disabled={isEdit}
+                autoFocus={!isEdit}
+                className="text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">{t('provider.modelName')}</label>
+              <Input
+                placeholder={t('provider.modelNamePlaceholder')}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoFocus={isEdit}
+                className="text-xs"
+              />
+            </div>
+          </div>
+
+          {/* Protocol type override */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium">{t('provider.modelTypeOverride')}</label>
+            <p className="text-[11px] text-muted-foreground">{t('provider.modelTypeOverrideHint', { type: providerType })}</p>
+            <Select value={typeOverride} onValueChange={(v) => setTypeOverride(v as ProviderType | 'none')}>
+              <SelectTrigger className="text-xs">
+                <SelectValue placeholder={t('provider.modelTypeOverridePlaceholder')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none" className="text-xs">{t('provider.modelTypeOverridePlaceholder')}</SelectItem>
+                <SelectItem value="openai-chat" className="text-xs">{t('provider.openaiChatCompat')}</SelectItem>
+                <SelectItem value="openai-responses" className="text-xs">{t('provider.openaiResponses')}</SelectItem>
+                <SelectItem value="anthropic" className="text-xs">Anthropic</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Context + Max output */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">{t('provider.contextLength')}</label>
+              <Input
+                type="number"
+                placeholder="128000"
+                value={contextLength}
+                onChange={(e) => setContextLength(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">{t('provider.maxOutputTokens')}</label>
+              <Input
+                type="number"
+                placeholder="4096"
+                value={maxOutputTokens}
+                onChange={(e) => setMaxOutputTokens(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+          </div>
+
+          {/* Pricing */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium">{t('provider.pricing')} <span className="text-muted-foreground font-normal">({t('provider.pricingUnit')})</span></label>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <p className="text-[11px] text-muted-foreground">{t('provider.inputPrice')}</p>
+                <Input type="number" step="0.01" placeholder="0.00" value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} className="text-xs" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] text-muted-foreground">{t('provider.outputPrice')}</p>
+                <Input type="number" step="0.01" placeholder="0.00" value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} className="text-xs" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] text-muted-foreground">{t('provider.cacheCreationPrice')}</p>
+                <Input type="number" step="0.01" placeholder="0.00" value={cacheCreationPrice} onChange={(e) => setCacheCreationPrice(e.target.value)} className="text-xs" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] text-muted-foreground">{t('provider.cacheHitPrice')}</p>
+                <Input type="number" step="0.01" placeholder="0.00" value={cacheHitPrice} onChange={(e) => setCacheHitPrice(e.target.value)} className="text-xs" />
+              </div>
+            </div>
+          </div>
+
+          {/* Icon */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium">{t('provider.modelIcon')}</label>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setIcon('')}
+                className={`size-7 flex items-center justify-center rounded border transition-colors ${
+                  icon === '' ? 'border-primary bg-primary/10' : 'border-border hover:border-muted-foreground/50 hover:bg-muted/40'
+                }`}
+                title={t('provider.modelIconAuto')}
+              >
+                <span className="text-[10px] text-muted-foreground">auto</span>
+              </button>
+              {MODEL_ICON_OPTIONS.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setIcon(key)}
+                  className={`size-7 flex items-center justify-center rounded border transition-colors ${
+                    icon === key ? 'border-primary bg-primary/10' : 'border-border hover:border-muted-foreground/50 hover:bg-muted/40'
+                  }`}
+                  title={key}
+                >
+                  <ModelIcon icon={key} size={16} />
+                </button>
+              ))}
+            </div>
+            {icon && <p className="text-[11px] text-muted-foreground">{t('provider.modelIconSelected', { icon })}</p>}
+          </div>
+
+          {/* Capabilities */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium">{t('provider.capabilities')}</label>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">{t('provider.supportsVision')}</span>
+                <Switch checked={supportsVision} onCheckedChange={setSupportsVision} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">{t('provider.supportsFunctionCall')}</span>
+                <Switch checked={supportsFunctionCall} onCheckedChange={setSupportsFunctionCall} />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>{t('action.cancel', { ns: 'common' })}</Button>
+            <Button size="sm" disabled={!id.trim()} onClick={handleSave}>{t('action.save', { ns: 'common' })}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // --- Right panel: provider config ---
 
 function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.Element {
@@ -193,11 +409,10 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
   const setProviderModels = useProviderStore((s) => s.setProviderModels)
 
   const [showKey, setShowKey] = useState(false)
-  const [addingModel, setAddingModel] = useState(false)
+  const [addModelOpen, setAddModelOpen] = useState(false)
+  const [editingModel, setEditingModel] = useState<AIModelConfig | null>(null)
   const [fetchingModels, setFetchingModels] = useState(false)
   const [testing, setTesting] = useState(false)
-  const [newModelId, setNewModelId] = useState('')
-  const [newModelName, setNewModelName] = useState('')
   const [modelSearch, setModelSearch] = useState('')
   const [editingThinkingModel, setEditingThinkingModel] = useState<AIModelConfig | null>(null)
   const [testModelId, setTestModelId] = useState(provider.models.find((m) => m.enabled)?.id ?? provider.models[0]?.id ?? '')
@@ -452,42 +667,11 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
                 {fetchingModels ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
                 {t('provider.fetchModels')}
               </Button>
-              <Button variant="outline" size="sm" className="h-7 w-7 p-0" onClick={() => setAddingModel(true)}>
+              <Button variant="outline" size="sm" className="h-7 w-7 p-0" onClick={() => setAddModelOpen(true)}>
                 <Plus className="size-3.5" />
               </Button>
             </div>
           </div>
-
-          {addingModel && (
-            <div className="flex items-center gap-2">
-              <Input
-                placeholder={t('provider.modelIdPlaceholder')}
-                value={newModelId}
-                onChange={(e) => setNewModelId(e.target.value)}
-                className="flex-1 h-8 text-xs"
-                autoFocus
-              />
-              <Input
-                placeholder={t('provider.modelNamePlaceholder')}
-                value={newModelName}
-                onChange={(e) => setNewModelName(e.target.value)}
-                className="flex-1 h-8 text-xs"
-              />
-              <Button
-                variant="ghost" size="sm" className="h-8 w-8 p-0"
-                disabled={!newModelId.trim()}
-                onClick={() => {
-                  addModel(provider.id, { id: newModelId.trim(), name: newModelName.trim() || newModelId.trim(), enabled: true })
-                  setNewModelId(''); setNewModelName(''); setAddingModel(false)
-                }}
-              >
-                <Check className="size-3.5" />
-              </Button>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => { setAddingModel(false); setNewModelId(''); setNewModelName('') }}>
-                <X className="size-3.5" />
-              </Button>
-            </div>
-          )}
 
           <div className="flex min-h-0 flex-1 flex-col rounded-lg border overflow-hidden">
             {filteredModels.length === 0 ? (
@@ -527,6 +711,20 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
                       <TooltipTrigger asChild>
                         <button
                           type="button"
+                          className="size-5 flex items-center justify-center rounded transition-colors text-muted-foreground/20 hover:text-muted-foreground/70 hover:bg-muted/40 opacity-0 group-hover:opacity-100"
+                          onClick={() => setEditingModel(model)}
+                        >
+                          <Pencil className="size-3" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-[11px]">
+                        {t('provider.editModel')}
+                      </TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
                           className={`size-5 flex items-center justify-center rounded transition-colors ${
                             model.supportsThinking
                               ? 'text-violet-500 hover:bg-violet-500/10'
@@ -560,6 +758,28 @@ function ProviderConfigPanel({ provider }: { provider: AIProvider }): React.JSX.
           </div>
         </section>
       </div>
+
+      {/* Add model dialog */}
+      <ModelFormDialog
+        open={addModelOpen}
+        onOpenChange={setAddModelOpen}
+        providerType={provider.type}
+        onSave={(model) => addModel(provider.id, model)}
+      />
+
+      {/* Edit model dialog */}
+      {editingModel && (
+        <ModelFormDialog
+          open={!!editingModel}
+          onOpenChange={(v) => { if (!v) setEditingModel(null) }}
+          providerType={provider.type}
+          initial={editingModel}
+          onSave={(model) => {
+            updateModel(provider.id, editingModel.id, model)
+            setEditingModel(null)
+          }}
+        />
+      )}
 
       {/* Thinking config dialog */}
       {editingThinkingModel && (

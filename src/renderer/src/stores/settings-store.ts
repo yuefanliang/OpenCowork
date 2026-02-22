@@ -3,6 +3,11 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import type { ProviderType, ReasoningEffortLevel } from '../lib/api/types'
 import { ipcStorage } from '../lib/ipc/ipc-storage'
 
+function getSystemLanguage(): 'en' | 'zh' {
+  const lang = navigator.language || navigator.languages?.[0] || 'en'
+  return lang.startsWith('zh') ? 'zh' : 'en'
+}
+
 interface SettingsStore {
   provider: ProviderType
   apiKey: string
@@ -36,7 +41,7 @@ export const useSettingsStore = create<SettingsStore>()(
       temperature: 0.7,
       systemPrompt: '',
       theme: 'system',
-      language: 'en',
+      language: getSystemLanguage(),
       autoApprove: false,
       devMode: false,
       thinkingEnabled: false,
@@ -48,7 +53,15 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'opencowork-settings',
+      version: 1,
       storage: createJSONStorage(() => ipcStorage),
+      migrate: (persisted: unknown, version: number) => {
+        const state = persisted as Record<string, unknown>
+        if (version === 0) {
+          state.language = getSystemLanguage()
+        }
+        return state as SettingsStore
+      },
       partialize: (state) => ({
         provider: state.provider,
         baseUrl: state.baseUrl,

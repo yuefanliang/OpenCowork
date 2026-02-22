@@ -1,0 +1,17 @@
+services:
+  docs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hejiale010426/open-cowork-docs:latest
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+networks:
+  default:
+    name: open-cowork-docs-net

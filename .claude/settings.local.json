@@ -3,7 +3,15 @@
     "allow": [
       "WebFetch(domain:open.feishu.cn)",
       "Bash(node -e:*)",
-      "Bash(if not exist:*)"
+      "Bash(if not exist:*)",
+      "WebFetch(domain:docs.openclaw.ai)",
+      "Bash(ls:*)",
+      "Bash(cd F:/code/OpenCowork/docs && npx shadcn@latest add button card badge --yes 2>&1)",
+      "Bash(cd \"F:/code/OpenCowork/docs\" && npx fumadocs-mdx 2>&1)",
+      "Bash(head:*)",
+      "Bash(find:*)",
+      "WebFetch(domain:www.fumadocs.dev)",
+      "Bash(tail:*)"
     ]
   }
 }

@@ -1,0 +1,115 @@
+---
+title: 数据库设计
+description: OpenCowork SQLite 数据库的表结构与迁移策略。
+---
+
+# 数据库设计 / Database Design
+
+OpenCowork 使用 SQLite（`better-sqlite3`）存储持久化数据，数据库文件位于 `~/.open-cowork/data.db`。
+
+## 配置 / Configuration
+
+- **WAL 模式**：启用 Write-Ahead Logging，提升并发读性能
+- **位置**：`~/.open-cowork/data.db`
+- **初始化**：`src/main/db/database.ts`
+
+## 表结构 / Schema
+
+### sessions
+
+```sql
+CREATE TABLE sessions (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  model TEXT,
+  provider TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+```
+
+### messages
+
+```sql
+CREATE TABLE messages (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  role TEXT NOT NULL,          -- 'user' | 'assistant' | 'tool'
+  content TEXT NOT NULL,       -- JSON 序列化的 MessageContent[]
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+```
+
+### plans
+
+```sql
+CREATE TABLE plans (
+  id TEXT PRIMARY KEY,
+  session_id TEXT,
+  title TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+```
+
+### tasks
+
+```sql
+CREATE TABLE tasks (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT,
+  subject TEXT NOT NULL,
+  description TEXT,
+  status TEXT DEFAULT 'pending', -- 'pending' | 'in_progress' | 'completed' | 'deleted'
+  active_form TEXT,
+  owner TEXT,
+  blocks TEXT,                   -- JSON 数组
+  blocked_by TEXT,               -- JSON 数组
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+```
+
+### cron_jobs
+
+```sql
+CREATE TABLE cron_jobs (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  schedule TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  enabled INTEGER DEFAULT 1,
+  created_at INTEGER,
+  last_run INTEGER,
+  next_run INTEGER
+);
+```
+
+### cron_runs
+
+```sql
+CREATE TABLE cron_runs (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  started_at INTEGER NOT NULL,
+  finished_at INTEGER,
+  status TEXT,                   -- 'success' | 'error'
+  output TEXT,
+  FOREIGN KEY (job_id) REFERENCES cron_jobs(id)
+);
+```
+
+## 迁移策略 / Migration Strategy
+
+Schema 迁移使用内联 `ALTER TABLE` + `try/catch` 实现幂等性：
+
+```typescript
+// 添加新列（如果已存在则忽略错误）
+try {
+  db.exec(`ALTER TABLE sessions ADD COLUMN model TEXT`);
+} catch {
+  // 列已存在，忽略
+}
+```
+
+这种方式简单可靠，适合桌面应用的渐进式 schema 演进。

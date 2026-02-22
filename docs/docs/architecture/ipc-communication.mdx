@@ -1,0 +1,76 @@
+---
+title: IPC 通信机制
+description: OpenCowork 主进程与渲染进程之间的 IPC 通信设计。
+---
+
+# IPC 通信机制 / IPC Communication
+
+OpenCowork 使用 Electron 的 IPC（Inter-Process Communication）在主进程和渲染进程之间通信。
+
+## 通道定义 / Channel Definitions
+
+所有 IPC 通道名称集中定义在 `src/renderer/src/lib/ipc/channels.ts`：
+
+```typescript
+export const IPC_CHANNELS = {
+  // 文件系统
+  FS_READ: 'fs:read',
+  FS_WRITE: 'fs:write',
+  FS_EXISTS: 'fs:exists',
+
+  // 数据库
+  DB_SAVE_SESSION: 'db:saveSession',
+  DB_GET_SESSIONS: 'db:getSessions',
+  DB_SAVE_MESSAGE: 'db:saveMessage',
+  DB_GET_MESSAGES: 'db:getMessages',
+
+  // 插件
+  PLUGIN_START: 'plugin:start',
+  PLUGIN_STOP: 'plugin:stop',
+  PLUGIN_STATUS: 'plugin:status',
+
+  // Cron
+  CRON_CREATE: 'cron:create',
+  CRON_DELETE: 'cron:delete',
+  CRON_LIST: 'cron:list',
+} as const;
+```
+
+## 调用模式 / Invocation Patterns
+
+### Request-Response（invoke）
+
+```typescript
+// 渲染进程
+const sessions = await window.electron.ipc.invoke(
+  IPC_CHANNELS.DB_GET_SESSIONS
+);
+
+// 主进程
+ipcMain.handle(IPC_CHANNELS.DB_GET_SESSIONS, () => {
+  return db.prepare('SELECT * FROM sessions').all();
+});
+```
+
+### 事件推送（on）
+
+```typescript
+// 渲染进程监听插件消息
+window.electron.ipc.on('plugin:message', (event, message) => {
+  pluginStore.addMessage(message);
+});
+
+// 主进程推送
+mainWindow.webContents.send('plugin:message', parsedMessage);
+```
+
+## Fire-and-Forget 模式
+
+对于不需要等待结果的操作（如保存消息），使用 fire-and-forget：
+
+```typescript
+// 不 await，不阻塞 UI
+window.electron.ipc.invoke('db:saveMessage', message);
+```
+
+这保证了 UI 的流畅性，即使数据库写入稍有延迟也不影响用户体验。

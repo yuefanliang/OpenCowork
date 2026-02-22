@@ -474,6 +474,7 @@ export function Layout(): React.JSX.Element {
           onAllow={() => pendingApproval && resolveApproval(pendingApproval.id, true)}
           onDeny={() => pendingApproval && resolveApproval(pendingApproval.id, false)}
         />
+
       </SidebarProvider>
     </TooltipProvider>
   )

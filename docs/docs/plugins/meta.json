@@ -1,0 +1,4 @@
+{
+  "title": "插件系统",
+  "pages": ["overview", "feishu", "dingtalk", "telegram", "discord", "whatsapp", "wecom"]
+}

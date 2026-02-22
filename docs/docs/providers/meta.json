@@ -1,0 +1,4 @@
+{
+  "title": "AI 提供商",
+  "pages": ["overview", "anthropic", "openai", "deepseek", "google", "ollama", "other-providers"]
+}

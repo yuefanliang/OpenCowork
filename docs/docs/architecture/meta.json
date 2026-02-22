@@ -1,0 +1,4 @@
+{
+  "title": "架构设计",
+  "pages": ["overview", "electron-model", "state-management", "database", "ipc-communication"]
+}

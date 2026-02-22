@@ -12,6 +12,7 @@ import {
   Users,
   Terminal,
   Square,
+  HelpCircle,
 } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover'
@@ -261,6 +262,18 @@ export function TopBar(): React.JSX.Element {
           </Button>
         </TooltipTrigger>
         <TooltipContent>{t('topbar.shortcuts')}</TooltipContent>
+      </Tooltip>
+
+      {/* Help */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button asChild variant="ghost" size="icon" className="titlebar-no-drag size-7">
+            <a href="https://open-cowork.shop/" target="_blank" rel="noreferrer">
+              <HelpCircle className="size-4" />
+            </a>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{t('topbar.help', { defaultValue: 'Help Center' })}</TooltipContent>
       </Tooltip>
 
       {/* Settings */}

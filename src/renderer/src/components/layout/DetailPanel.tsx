@@ -172,15 +172,14 @@ function TeamDetailView(): React.JSX.Element {
 
 // ── SubAgent Detail View ─────────────────────────────────────────
 
-function SubAgentDetailItem({ sa, defaultOpen }: { sa: SubAgentState; defaultOpen?: boolean }): React.JSX.Element {
+function SubAgentDetailItem({ sa, isOpen, onToggle }: { sa: SubAgentState; isOpen: boolean; onToggle: () => void }): React.JSX.Element {
   const { t } = useTranslation('layout')
-  const [open, setOpen] = React.useState(defaultOpen ?? false)
   const elapsed = sa.completedAt && sa.startedAt ? sa.completedAt - sa.startedAt : null
 
   return (
     <div className="rounded-lg border border-muted overflow-hidden">
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={onToggle}
         className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/30 transition-colors"
       >
         <Bot className="size-3.5 text-violet-500 shrink-0" />
@@ -197,10 +196,10 @@ function SubAgentDetailItem({ sa, defaultOpen }: { sa: SubAgentState; defaultOpe
             {formatElapsed(elapsed)}
           </span>
         )}
-        {open ? <ChevronDown className="size-3 text-muted-foreground/40" /> : <ChevronRight className="size-3 text-muted-foreground/40" />}
+        {isOpen ? <ChevronDown className="size-3 text-muted-foreground/40" /> : <ChevronRight className="size-3 text-muted-foreground/40" />}
       </button>
       <AnimatePresence>
-        {open && (
+        {isOpen && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -263,6 +262,10 @@ function SubAgentDetailView({ toolUseId }: { toolUseId?: string }): React.JSX.El
   const completedSubAgents = useAgentStore((s) => s.completedSubAgents)
   const subAgentHistory = useAgentStore((s) => s.subAgentHistory)
 
+  // Accordion: only one item open at a time across all lists
+  const [expandedId, setExpandedId] = React.useState<string | null>(toolUseId ?? null)
+  const toggle = (id: string): void => setExpandedId((prev) => (prev === id ? null : id))
+
   // Current active + completed
   const currentAgents: SubAgentState[] = [
     ...Object.values(activeSubAgents),
@@ -278,7 +281,11 @@ function SubAgentDetailView({ toolUseId }: { toolUseId?: string }): React.JSX.El
     <div className="space-y-3">
       {/* Targeted SubAgent */}
       {targeted && (
-        <SubAgentDetailItem sa={targeted} defaultOpen />
+        <SubAgentDetailItem
+          sa={targeted}
+          isOpen={expandedId === targeted.toolUseId}
+          onToggle={() => toggle(targeted.toolUseId)}
+        />
       )}
 
       {/* Current session SubAgents */}
@@ -291,7 +298,12 @@ function SubAgentDetailView({ toolUseId }: { toolUseId?: string }): React.JSX.El
           </div>
           <div className="space-y-1.5">
             {currentAgents.map((sa) => (
-              <SubAgentDetailItem key={sa.toolUseId} sa={sa} />
+              <SubAgentDetailItem
+                key={sa.toolUseId}
+                sa={sa}
+                isOpen={expandedId === sa.toolUseId}
+                onToggle={() => toggle(sa.toolUseId)}
+              />
             ))}
           </div>
         </div>
@@ -309,7 +321,12 @@ function SubAgentDetailView({ toolUseId }: { toolUseId?: string }): React.JSX.El
             </div>
             <div className="space-y-1.5">
               {subAgentHistory.slice().reverse().map((sa) => (
-                <SubAgentDetailItem key={sa.toolUseId} sa={sa} />
+                <SubAgentDetailItem
+                  key={sa.toolUseId}
+                  sa={sa}
+                  isOpen={expandedId === sa.toolUseId}
+                  onToggle={() => toggle(sa.toolUseId)}
+                />
               ))}
             </div>
           </div>

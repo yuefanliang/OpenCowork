@@ -1,0 +1,57 @@
+---
+title: 飞书集成
+description: 配置飞书机器人实现 AI 自动回复。
+---
+
+# 飞书集成 / Feishu Integration
+
+OpenCowork 通过官方 Lark SDK 集成飞书，支持单聊和群聊自动回复。
+
+## 前置要求 / Prerequisites
+
+1. 在[飞书开放平台](https://open.feishu.cn/)创建企业自建应用
+2. 开启机器人能力
+3. 配置消息事件订阅
+
+## 配置步骤 / Setup
+
+### 1. 创建飞书应用
+
+1. 访问飞书开放平台 → 开发者后台
+2. 创建企业自建应用
+3. 在「添加应用能力」中开启**机器人**
+
+### 2. 获取凭证
+
+在应用的「凭证与基础信息」页面获取：
+
+- `App ID`
+- `App Secret`
+
+### 3. 配置事件订阅
+
+在「事件订阅」页面：
+
+1. 设置请求网址（OpenCowork 会提供本地 webhook 地址）
+2. 添加事件：`im.message.receive_v1`（接收消息）
+
+### 4. 在 OpenCowork 中配置
+
+进入 **设置 → 插件 → 飞书**，填入：
+
+| 配置项 | 说明 |
+|--------|------|
+| App ID | 飞书应用 ID |
+| App Secret | 飞书应用密钥 |
+| Verification Token | 事件验证 Token |
+
+### 5. 开启插件
+
+点击开关启用飞书插件，机器人开始监听消息。
+
+## 权限配置 / Permissions
+
+需要在飞书开放平台申请以下权限：
+
+- `im:message` — 获取与发送消息
+- `im:message.group_at_msg` — 接收群组 @ 消息

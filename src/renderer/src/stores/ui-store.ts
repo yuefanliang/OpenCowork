@@ -186,7 +186,7 @@ export const useUIStore = create<UIStore>((set) => ({
 
   detailPanelContent: null,
 
-  openDetailPanel: (content) => set({ detailPanelOpen: true, detailPanelContent: content }),
+  openDetailPanel: (content) => set({ detailPanelOpen: true, detailPanelContent: content, rightPanelOpen: false }),
 
   closeDetailPanel: () => set({ detailPanelOpen: false, detailPanelContent: null }),
 
@@ -244,6 +244,7 @@ export const useUIStore = create<UIStore>((set) => ({
       markdownTitle: title,
     },
     leftSidebarOpen: false,
+    rightPanelOpen: false,
   }),
   closePreviewPanel: () => set({ previewPanelOpen: false, previewPanelState: null }),
   setPreviewViewMode: (mode) => set((s) => ({

@@ -142,13 +142,7 @@ export function SubAgentCard({
   const queryText = String(input.description ?? input.query ?? input.task ?? input.target ?? '')
 
   const handleOpenPreview = (): void => {
-    // Get the best available text content
-    const previewText = live?.streamingText || histText || ''
-    if (previewText && typeof previewText === 'string') {
-      useUIStore.getState().openMarkdownPreview(`${displayName} — Result`, previewText)
-    } else {
-      useUIStore.getState().openDetailPanel({ type: 'subagent', toolUseId })
-    }
+    useUIStore.getState().openDetailPanel({ type: 'subagent', toolUseId })
   }
 
   return (

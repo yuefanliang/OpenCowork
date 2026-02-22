@@ -112,6 +112,10 @@ Uses `i18next` + `react-i18next`. Locale files in `locales/{en,zh}/`. Language s
 - **Context compression**: Between agent loop iterations, conversation history can be compressed (summarized) or pre-compressed (stale tool results cleared) based on token thresholds.
 - **Data directory**: `~/.open-cowork/` — contains `data.db`, agent definitions, workflows, and plugin configs.
 
+### Documentation Site (`docs/`)
+
+A separate Next.js + [Fumadocs](https://fumadocs.dev) documentation site. Run independently with `npm run dev` inside `docs/`. Not part of the Electron build.
+
 ### Configuration Files
 
 - `electron.vite.config.ts`: Vite config for main/preload/renderer. `better-sqlite3` is external. Renderer uses `@renderer` alias and Tailwind CSS v4 plugin.

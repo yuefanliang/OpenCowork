@@ -222,6 +222,7 @@ export const routinAiPreset: BuiltinProviderPreset = {
     // ── Google Gemini ──
     { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview', icon: 'gemini', enabled: true, contextLength: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsFunctionCall: true, inputPrice: 0.5, outputPrice: 3, supportsThinking: true, thinkingConfig: { bodyParams: { reasoning_effort: 'medium' } } },
     { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview', icon: 'gemini', enabled: true, contextLength: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsFunctionCall: true, inputPrice: 2, outputPrice: 12, supportsThinking: true, thinkingConfig: { bodyParams: { reasoning_effort: 'medium' } } },
+    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview', icon: 'gemini', enabled: true, contextLength: 1_048_576, maxOutputTokens: 65_536, supportsVision: true, supportsFunctionCall: true, inputPrice: 2, outputPrice: 12, supportsThinking: true, thinkingConfig: { bodyParams: { reasoning_effort: 'medium' } } },
     // ── Z.AI / GLM (智谱) ──
     {
       id: 'glm-4.5',
