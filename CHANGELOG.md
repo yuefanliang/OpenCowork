@@ -3,6 +3,15 @@
 All notable changes to **OpenCowork** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.1] - 2026-02-22
+
+### Added
+- **Auto-updater for Windows/Linux** — new `setupAutoUpdater` wiring in the main process with postpone logic, localized dialogs, release-note display, download progress indicators, and crash-log instrumentation so packaged builds can fetch binary updates directly from GitHub Releases.
+- **Mermaid diagram rendering in chat** — assistant messages now render ` ```mermaid ` code blocks as themed SVG diagrams with one-click copy for source or rendered image output, plus dark/light theme sync via `mermaid-theme.ts`.
+
+### Changed
+- **Build & release pipeline** — `electron-builder.yml`, `dev-app-update.yml`, and the GitHub Actions workflow now publish release artifacts (including `latest.yml`, `.AppImage.zsync`, etc.) to GitHub Releases so the auto-updater has consistent feeds across platforms.
+
 ## [0.2.0] - 2026-02-21
 
 ### Fixed
