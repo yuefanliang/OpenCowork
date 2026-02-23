@@ -87,7 +87,28 @@
     "ui": "UI",
     "license": "许可证",
     "description": "OpenCowork 是一个开源的 AI 协作平台，支持多种大语言模型提供商。",
-    "github": "GitHub"
+    "github": "GitHub",
+    "heroTagline": "AI 协作工作台",
+    "heroDescription": "在同一个桌面原生体验中协调多模型、智能体与技能。",
+    "workflowLabel": "WORKFLOW",
+    "workflowTitle": "智能体加速你的工程节奏",
+    "workflowDescription": "在一个窗口内完成代码、文件、Shell、MCP 工具与插件调度，保持上下文与安全边界。",
+    "workflowCta": "查看发布历史",
+    "featureCards": {
+      "orchestration": {
+        "title": "多智能体协作",
+        "desc": "以团队模式运行多个智能体，拆解复杂任务。"
+      },
+      "sandbox": {
+        "title": "本地安全沙盒",
+        "desc": "所有文件与密钥均在本地处理，可控可审计。"
+      },
+      "plugins": {
+        "title": "MCP / 插件体系",
+        "desc": "无缝连接 MCP 服务器、Skills 与第三方插件。"
+      }
+    },
+    "summary": "OpenCowork 将多模型工作流、MCP 服务器、Skills 与自定义插件统一在一个桌面体验里，你可以在 Chat / Cowork / Code 模式间自由切换，并保持对所有数据的本地掌控。"
   },
   "dialog": {
     "title": "快速设置",

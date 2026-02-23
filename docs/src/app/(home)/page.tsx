@@ -75,7 +75,7 @@ const stack = [
 const docs = [
   { title: '快速开始', desc: '安装、配置、第一次对话', href: '/docs/getting-started/introduction' },
   { title: 'Agent 循环', desc: '核心引擎工作原理', href: '/docs/core-concepts/agent-loop' },
-  { title: '工具系统', desc: '内置工具与自定义扩展', href: '/docs/core-concepts/tools' },
+  { title: '工具系统', desc: '内置工具与自定义扩展', href: '/docs/core-concepts/tool-system' },
   { title: '插件系统', desc: '消息平台接入指南', href: '/docs/plugins/overview' },
   { title: 'AI 提供商', desc: '18+ 模型配置', href: '/docs/providers/overview' },
   { title: '架构设计', desc: '进程模型与数据流', href: '/docs/architecture/overview' },

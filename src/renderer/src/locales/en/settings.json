@@ -87,7 +87,28 @@
     "ui": "UI",
     "license": "License",
     "description": "OpenCowork is an open-source AI collaboration platform supporting multiple LLM providers.",
-    "github": "GitHub"
+    "github": "GitHub",
+    "heroTagline": "AI Collaborative Workbench",
+    "heroDescription": "Coordinate multiple models, agents, and skills inside one native workspace.",
+    "workflowLabel": "WORKFLOW",
+    "workflowTitle": "Agents accelerate your engineering cadence",
+    "workflowDescription": "Ship code, manage files, run shell, and orchestrate MCP tools without losing context.",
+    "workflowCta": "View release history",
+    "featureCards": {
+      "orchestration": {
+        "title": "Multi-agent orchestration",
+        "desc": "Run coordinated agent teams to decompose complex work."
+      },
+      "sandbox": {
+        "title": "Local secure sandbox",
+        "desc": "Keep every file and secret local with auditable execution."
+      },
+      "plugins": {
+        "title": "MCP & plugin ecosystem",
+        "desc": "Connect MCP servers, skills, and third-party plugins seamlessly."
+      }
+    },
+    "summary": "OpenCowork unifies multi-model workflows, MCP servers, skills, and custom plugins inside one desktop experience so you can switch between Chat, Cowork, or Code modes while staying in control."
   },
   "dialog": {
     "title": "Quick Settings",

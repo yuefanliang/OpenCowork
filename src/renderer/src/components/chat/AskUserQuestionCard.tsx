@@ -1,7 +1,8 @@
 import * as React from 'react'
 import { useState, useCallback } from 'react'
-import { MessageCircleQuestion, Check, ChevronRight } from 'lucide-react'
+import { MessageCircleQuestion, Check, ChevronRight, ChevronLeft } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
+import { Button } from '@renderer/components/ui/button'
 import { resolveAskUserAnswers } from '@renderer/lib/tools/ask-user-tool'
 import type { AskUserQuestionItem, AskUserAnswers } from '@renderer/lib/tools/ask-user-tool'
 import type { ToolCallStatus } from '@renderer/lib/agent/types'
@@ -35,8 +36,8 @@ function QuestionBlock({
   const isOtherSelected = selected.has('__other__')
 
   return (
-    <div className="space-y-2">
-      <p className="text-sm font-medium">{item.question}</p>
+    <div className="space-y-2.5">
+      <p className="text-[13px] font-semibold leading-tight text-foreground">{item.question}</p>
       {item.options && item.options.length > 0 && (
         <div className="space-y-1.5">
           {item.options.map((opt, oi) => {
@@ -48,28 +49,35 @@ function QuestionBlock({
                 disabled={disabled}
                 onClick={() => onToggle(index, value)}
                 className={cn(
-                  'flex items-start gap-2.5 w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+                  'flex items-start gap-2.5 w-full rounded-lg border px-3 py-2 text-left text-[13px] leading-tight transition-all',
                   isSelected
-                    ? 'border-primary/50 bg-primary/5 text-foreground'
-                    : 'border-border/50 bg-muted/5 text-muted-foreground hover:border-border hover:bg-muted/10',
-                  disabled && 'opacity-60 cursor-not-allowed'
+                    ? 'border-primary bg-primary/10 text-foreground shadow-sm'
+                    : 'border-border/80 bg-background/80 hover:border-primary/50 hover:bg-muted/40 hover:shadow-sm',
+                  disabled && 'opacity-50 cursor-not-allowed'
                 )}
               >
                 <span
                   className={cn(
-                    'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border transition-colors',
-                    item.multiSelect ? 'rounded-sm' : 'rounded-full',
+                    'mt-0.5 flex size-4 shrink-0 items-center justify-center border transition-all',
+                    item.multiSelect ? 'rounded-md' : 'rounded-full',
                     isSelected
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-muted-foreground/30'
+                      ? 'border-primary bg-primary text-primary-foreground scale-105'
+                      : 'border-muted-foreground/40 bg-background'
                   )}
                 >
-                  {isSelected && <Check className="size-3" />}
+                  {isSelected && <Check className="size-3 stroke-[2.5]" />}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <span className="font-medium">{opt.label}</span>
+                  <div
+                    className={cn(
+                      'font-medium transition-colors',
+                      isSelected ? 'text-foreground' : 'text-muted-foreground'
+                    )}
+                  >
+                    {opt.label}
+                  </div>
                   {opt.description && (
-                    <p className="mt-0.5 text-xs text-muted-foreground/70">{opt.description}</p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground/80 leading-snug">{opt.description}</p>
                   )}
                 </div>
               </button>
@@ -80,25 +88,30 @@ function QuestionBlock({
             disabled={disabled}
             onClick={() => onToggle(index, '__other__')}
             className={cn(
-              'flex items-start gap-2.5 w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+              'flex items-start gap-2.5 w-full rounded-lg border px-3 py-2 text-left text-[13px] leading-tight transition-all',
               isOtherSelected
-                ? 'border-primary/50 bg-primary/5 text-foreground'
-                : 'border-border/50 bg-muted/5 text-muted-foreground hover:border-border hover:bg-muted/10',
-              disabled && 'opacity-60 cursor-not-allowed'
+                ? 'border-primary bg-primary/10 text-foreground shadow-sm'
+                : 'border-border/80 bg-background/80 hover:border-primary/50 hover:bg-muted/40 hover:shadow-sm',
+              disabled && 'opacity-50 cursor-not-allowed'
             )}
           >
             <span
               className={cn(
-                'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border transition-colors',
-                item.multiSelect ? 'rounded-sm' : 'rounded-full',
+                'mt-0.5 flex size-4 shrink-0 items-center justify-center border transition-all',
+                item.multiSelect ? 'rounded-md' : 'rounded-full',
                 isOtherSelected
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-muted-foreground/30'
+                  ? 'border-primary bg-primary text-primary-foreground scale-105'
+                  : 'border-muted-foreground/40 bg-background'
               )}
             >
-              {isOtherSelected && <Check className="size-3" />}
+              {isOtherSelected && <Check className="size-3 stroke-[2.5]" />}
             </span>
-            <span className="font-medium">Other</span>
+            <span className={cn(
+              'font-medium transition-colors',
+              isOtherSelected ? 'text-foreground' : 'text-muted-foreground'
+            )}>
+              Other
+            </span>
           </button>
         </div>
       )}
@@ -111,9 +124,12 @@ function QuestionBlock({
           placeholder="Type your answer..."
           rows={2}
           className={cn(
-            'w-full rounded-lg border border-border/50 bg-muted/5 px-3 py-2 text-sm',
-            'placeholder:text-muted-foreground/40 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30',
-            disabled && 'opacity-60 cursor-not-allowed'
+            'w-full rounded-lg border bg-background/70 px-3 py-2 text-sm',
+            'placeholder:text-muted-foreground/50 resize-none',
+            'transition-all duration-200',
+            'focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary',
+            'hover:border-primary/50',
+            disabled && 'opacity-50 cursor-not-allowed bg-muted/20'
           )}
         />
       )}
@@ -146,6 +162,7 @@ export function AskUserQuestionCard({
   // Per-question selection state
   const [selections, setSelections] = useState<Map<number, Set<string>>>(() => new Map())
   const [customTexts, setCustomTexts] = useState<Map<number, string>>(() => new Map())
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
 
   const handleToggle = useCallback(
     (qIdx: number, value: string) => {
@@ -215,80 +232,141 @@ export function AskUserQuestionCard({
     resolveAskUserAnswers(toolUseId, answers)
   }, [toolUseId, questions, selections, customTexts])
 
-  // Check if at least one question has an answer
-  const hasAnyAnswer = React.useMemo(() => {
+  // Check if current question has an answer
+  const hasCurrentAnswer = React.useMemo(() => {
+    const sel = selections.get(currentQuestionIndex) ?? new Set()
+    const custom = customTexts.get(currentQuestionIndex) ?? ''
+    const q = questions[currentQuestionIndex]
+    if (!q) return false
+    if (sel.size > 0 && !sel.has('__other__')) return true
+    if (sel.has('__other__') && custom.trim()) return true
+    if ((!q.options || q.options.length === 0) && custom.trim()) return true
+    return false
+  }, [currentQuestionIndex, questions, selections, customTexts])
+
+  // Check if all questions have answers
+  const hasAllAnswers = React.useMemo(() => {
     for (let i = 0; i < questions.length; i++) {
       const sel = selections.get(i) ?? new Set()
       const custom = customTexts.get(i) ?? ''
       const q = questions[i]
-      if (sel.size > 0 && !sel.has('__other__')) return true
-      if (sel.has('__other__') && custom.trim()) return true
-      if ((!q.options || q.options.length === 0) && custom.trim()) return true
+      const hasAnswer = 
+        (sel.size > 0 && !sel.has('__other__')) ||
+        (sel.has('__other__') && custom.trim()) ||
+        ((!q.options || q.options.length === 0) && custom.trim())
+      if (!hasAnswer) return false
     }
-    return false
+    return true
   }, [questions, selections, customTexts])
+
+  const isLastQuestion = currentQuestionIndex === questions.length - 1
+  const isFirstQuestion = currentQuestionIndex === 0
+
+  const handleNext = useCallback(() => {
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(currentQuestionIndex + 1)
+    }
+  }, [currentQuestionIndex, questions.length])
+
+  const handlePrevious = useCallback(() => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex(currentQuestionIndex - 1)
+    }
+  }, [currentQuestionIndex])
 
   // Already answered — show summary
   if (isAnswered) {
     const answeredText = parseAnsweredOutput(output)
     return (
-      <div className="my-3 rounded-xl border border-green-500/20 bg-green-500/5 p-4 space-y-2">
-        <div className="flex items-center gap-2 text-sm font-medium text-green-500">
-          <Check className="size-4" />
+      <div className="my-2.5 rounded-lg border border-green-500/25 bg-green-500/10 p-3.5 space-y-2 shadow-sm">
+        <div className="flex items-center gap-2 text-sm font-semibold text-green-600 dark:text-green-500">
+          <Check className="size-4.5 stroke-[2.5]" />
           <span>Questions answered</span>
         </div>
         {answeredText && (
-          <pre className="text-xs text-muted-foreground whitespace-pre-wrap">{answeredText}</pre>
+          <pre className="text-xs text-muted-foreground/90 whitespace-pre-wrap leading-relaxed">{answeredText}</pre>
         )}
       </div>
     )
   }
 
+  const currentQuestion = questions[currentQuestionIndex]
+  if (!currentQuestion) return <></>
+
   return (
-    <div className="my-3 rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-4">
+    <div className="my-2.5 rounded-lg border border-border/70 bg-background/70 p-4 space-y-3 shadow-sm">
       {/* Header */}
-      <div className="flex items-center gap-2">
-        <MessageCircleQuestion className="size-5 text-primary" />
-        <span className="text-sm font-semibold">Agent needs your input</span>
-        {isPending && (
-          <span className="ml-auto flex items-center gap-1 text-[10px] text-primary/60">
-            <span className="size-1.5 rounded-full bg-primary animate-pulse" />
-            Waiting for your response
-          </span>
-        )}
-      </div>
-
-      {/* Questions */}
-      <div className="space-y-4">
-        {questions.map((q, i) => (
-          <QuestionBlock
-            key={i}
-            index={i}
-            item={q}
-            selected={selections.get(i) ?? new Set()}
-            customText={customTexts.get(i) ?? ''}
-            onToggle={handleToggle}
-            onCustomTextChange={handleCustomTextChange}
-            disabled={!isPending}
-          />
-        ))}
-      </div>
-
-      {/* Submit button */}
-      {isPending && (
-        <button
-          onClick={handleSubmit}
-          disabled={!hasAnyAnswer}
-          className={cn(
-            'flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors',
-            hasAnyAnswer
-              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-              : 'bg-muted text-muted-foreground cursor-not-allowed'
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground/80">
+          {questions.length > 1 && (
+            <span className="font-mono text-xs">
+              {currentQuestionIndex + 1}/{questions.length}
+            </span>
           )}
-        >
-          Submit
-          <ChevronRight className="size-4" />
-        </button>
+          {isPending && (
+            <span className="flex items-center gap-1 text-primary/70">
+              <span className="size-1.5 rounded-full bg-primary animate-pulse" />
+              Waiting
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Current Question */}
+      <QuestionBlock
+        index={currentQuestionIndex}
+        item={currentQuestion}
+        selected={selections.get(currentQuestionIndex) ?? new Set()}
+        customText={customTexts.get(currentQuestionIndex) ?? ''}
+        onToggle={handleToggle}
+        onCustomTextChange={handleCustomTextChange}
+        disabled={!isPending}
+      />
+
+      {/* Navigation and Submit */}
+      {isPending && (
+        <div className="flex items-center gap-1.5 pt-0.5">
+          {/* Previous button */}
+          {questions.length > 1 && !isFirstQuestion && (
+            <Button
+              onClick={handlePrevious}
+              variant="outline"
+              size="xs"
+              className="gap-1 text-[12px]"
+            >
+              <ChevronLeft className="size-3.5" />
+              Previous
+            </Button>
+          )}
+
+          <div className="flex-1" />
+
+          {/* Next button (if not last question) */}
+          {questions.length > 1 && !isLastQuestion && (
+            <Button
+              onClick={handleNext}
+              disabled={!hasCurrentAnswer}
+              size="xs"
+              className="gap-1 text-[12px]"
+            >
+              Next
+              <ChevronRight className="size-3.5" />
+            </Button>
+          )}
+
+          {/* Submit button (only on last question and all answered) */}
+          {isLastQuestion && (
+            <Button
+              onClick={handleSubmit}
+              disabled={!hasAllAnswers}
+              size="xs"
+              className="gap-1 text-[12px]"
+            >
+              Submit
+              <ChevronRight className="size-3.5" />
+            </Button>
+          )}
+        </div>
       )}
     </div>
   )

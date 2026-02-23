@@ -816,18 +816,18 @@ function AboutPanel(): React.JSX.Element {
   const featureCards = [
     {
       icon: Sparkles,
-      title: '多 Agent 编排',
-      desc: '以团队模式运行多个智能体，拆解复杂任务。',
+      title: t('about.featureCards.orchestration.title'),
+      desc: t('about.featureCards.orchestration.desc'),
     },
     {
       icon: ShieldCheck,
-      title: '本地安全沙盒',
-      desc: '所有文件与秘钥均在本地处理，可控可审计。',
+      title: t('about.featureCards.sandbox.title'),
+      desc: t('about.featureCards.sandbox.desc'),
     },
     {
       icon: Layers,
-      title: 'MCP / 插件体系',
-      desc: '无缝连接 MCP 服务器、Skills 与第三方插件。',
+      title: t('about.featureCards.plugins.title'),
+      desc: t('about.featureCards.plugins.desc'),
     },
   ]
   return (
@@ -859,9 +859,9 @@ function AboutPanel(): React.JSX.Element {
               <div className="absolute -inset-1 rounded-3xl bg-primary/10 blur-2xl" aria-hidden="true" />
             </div>
             <div className="space-y-1">
-              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">AI 协作工作台</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{t('about.heroTagline')}</p>
               <h3 className="text-2xl font-semibold text-foreground">OpenCowork</h3>
-              <p className="text-sm text-muted-foreground">多模型、多 Agent、多技能在同一桌面原生体验中协同运作。</p>
+              <p className="text-sm text-muted-foreground">{t('about.heroDescription')}</p>
             </div>
           </div>
           <Separator className="my-6 border-border/40" />
@@ -876,11 +876,9 @@ function AboutPanel(): React.JSX.Element {
         </section>
 
         <section className="rounded-3xl border border-border/70 bg-card/60 p-5 shadow-lg shadow-slate-900/5">
-          <p className="text-xs uppercase tracking-[0.3em] text-primary">WORKFLOW</p>
-          <h4 className="mt-2 text-lg font-semibold">智能体加速你的工程节奏</h4>
-          <p className="mt-1 text-sm text-muted-foreground">
-            在一个窗口里完成代码、文件、Shell、MCP 工具与插件调度，保持上下文与安全边界。
-          </p>
+          <p className="text-xs uppercase tracking-[0.3em] text-primary">{t('about.workflowLabel')}</p>
+          <h4 className="mt-2 text-lg font-semibold">{t('about.workflowTitle')}</h4>
+          <p className="mt-1 text-sm text-muted-foreground">{t('about.workflowDescription')}</p>
           <div className="mt-4 space-y-3">
             {featureCards.map((card) => (
               <div key={card.title} className="flex gap-3 rounded-2xl border border-border/80 bg-background/70 px-3 py-2">
@@ -897,14 +895,12 @@ function AboutPanel(): React.JSX.Element {
             variant="secondary"
             onClick={() => window.open('https://github.com/AIDotNet/OpenCowork/releases', '_blank', 'noopener')}
           >
-            查看发布历史
+            {t('about.workflowCta')}
           </Button>
         </section>
 
         <section className="rounded-3xl border border-dashed border-border/60 bg-muted/20 p-5 lg:col-span-2">
-          <p className="text-sm text-muted-foreground">
-            OpenCowork 是一个开源的 AI 协作平台，致力于将多模型、MCP 服务器、Skills 与自定义插件汇聚到同一个桌面工作流中。你可以根据不同任务模式（Chat / Cowork / Code）自由切换，并保留全部本地控制权。
-          </p>
+          <p className="text-sm text-muted-foreground">{t('about.summary')}</p>
         </section>
       </div>
     </div>
