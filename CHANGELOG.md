@@ -3,6 +3,20 @@
 All notable changes to **OpenCowork** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.3] - 2026-02-24
+
+### Added
+- **CronAgent profile** — dedicated agent preset for autonomous cron job execution with tailored system prompt.
+- **X.com posting skill** — new skill enabling the agent to compose and publish posts to X.com (Twitter).
+- **Cron system improvements** — global job management with concurrency tracking, preventing overlapping runs and improving scheduler reliability.
+
+### Changed
+- **macOS-native layout overhaul** — refactored window chrome to use a native title bar on macOS, replaced the horizontal top bar with a vertical navigation rail, and introduced a unified toolbar housing the mode switcher (Cowork/Code) and export actions for a cleaner, more platform-consistent UI.
+- **English-first documentation** — rewrote README with comprehensive English documentation covering multi-agent architecture, 15+ SubAgents, messaging platform integrations, and technical deep-dive; added detailed English repository guidelines (`CLAUDE.md`) covering project structure, build commands, coding style, and development workflow.
+
+### Fixed
+- **OpenAI-compatible provider stream termination** — streaming now waits for the usage chunk when it is not included in the `finish_reason` event, preventing premature stream closure and missing token usage data with OpenAI-compatible providers.
+
 ## [0.2.2] - 2026-02-23
 
 ### Added
