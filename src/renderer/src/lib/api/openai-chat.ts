@@ -173,8 +173,9 @@ class OpenAIChatProvider implements APIProvider {
         }
         toolBuffers.clear()
         // Some OpenAI-compatible providers don't terminate SSE after tool_calls finish_reason.
-        // End this turn proactively to avoid hanging in "receiving args...".
-        if (!isOpenAI) break streamLoop
+        // Only break early if usage was already included; otherwise continue to capture
+        // the separate usage chunk that many providers send after finish_reason.
+        if (!isOpenAI && data.usage) break streamLoop
       }
 
       // Compatibility fallback:
@@ -199,7 +200,7 @@ class OpenAIChatProvider implements APIProvider {
           }
         }
         toolBuffers.clear()
-        if (!isOpenAI) break streamLoop
+        if (!isOpenAI && data.usage) break streamLoop
       }
 
       if (finishReason === 'stop') {
@@ -227,11 +228,14 @@ class OpenAIChatProvider implements APIProvider {
           },
         }
         // OpenAI-compatible providers may keep connection open after stop.
-        if (!isOpenAI) break streamLoop
+        // Only break early if usage was already included in this chunk;
+        // otherwise continue reading to capture the separate usage chunk
+        // that many providers (e.g. Kimi, DeepSeek) send after stop.
+        if (!isOpenAI && data.usage) break streamLoop
       }
 
       if ((finishReason === 'length' || finishReason === 'content_filter') && !isOpenAI) {
-        break streamLoop
+        if (data.usage) break streamLoop
       }
     }
 
