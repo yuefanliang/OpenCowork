@@ -71,6 +71,24 @@ import {
 } from '@renderer/lib/agent/memory-files'
 import { IMAGE_GENERATE_TOOL_NAME } from '@renderer/lib/app-plugin/types'
 
+const CLARIFY_ALLOWED_TOOLS = new Set([
+  'AskUserQuestion',
+  'Read',
+  'LS',
+  'Glob',
+  'Grep',
+  'Skill',
+  'WebSearch',
+  'OpenPreview',
+  'EnterPlanMode',
+  'SavePlan',
+  'ExitPlanMode',
+  'TaskCreate',
+  'TaskGet',
+  'TaskUpdate',
+  'TaskList'
+])
+
 /** Per-session abort controllers — module-level so concurrent sessions don't overwrite each other */
 const sessionAbortControllers = new Map<string, AbortController>()
 
@@ -539,6 +557,33 @@ function createStreamDeltaBuffer(sessionId: string, assistantMsgId: string): Str
   }
 }
 
+function compactStreamingToolInput(input: Record<string, unknown>): Record<string, unknown> {
+  const hasEditPayload =
+    typeof input.old_string === 'string' || typeof input.new_string === 'string'
+  const hasWritePayload = typeof input.content === 'string'
+
+  if (!hasEditPayload && !hasWritePayload) return input
+
+  const compact: Record<string, unknown> = {}
+  if (input.file_path !== undefined) compact.file_path = input.file_path
+  if (input.path !== undefined) compact.path = input.path
+
+  if (hasEditPayload) {
+    if (input.explanation !== undefined) compact.explanation = input.explanation
+    if (input.replace_all !== undefined) compact.replace_all = input.replace_all
+  }
+
+  if (hasWritePayload) {
+    const content = String(input.content)
+    compact.content_preview = content.slice(0, 1200)
+    compact.content_lines = content.length === 0 ? 0 : content.split('\n').length
+    compact.content_chars = content.length
+    if (content.length > 1200) compact.content_truncated = true
+  }
+
+  return compact
+}
+
 function createSubAgentEventBuffer(sessionId: string): {
   handleEvent: (event: SubAgentEvent) => void
   dispose: () => void
@@ -942,7 +987,7 @@ export function useChatActions(): {
           dispatchNextQueuedMessage(sessionId)
         }
       } else {
-        // Cowork / Code mode: agent loop with tools
+        // Clarify / Cowork / Code mode: agent loop with tools
         const session = useChatStore.getState().sessions.find((s) => s.id === sessionId)
 
         // Dynamic plugin tool registration based on active channels
@@ -968,6 +1013,12 @@ export function useChatActions(): {
         let finalEffectiveToolDefs = settings.teamToolsEnabled
           ? finalToolDefs
           : finalToolDefs.filter((t) => !TEAM_TOOL_NAMES.has(t.name))
+
+        if (mode === 'clarify') {
+          finalEffectiveToolDefs = finalEffectiveToolDefs.filter((t) =>
+            CLARIFY_ALLOWED_TOOLS.has(t.name)
+          )
+        }
 
         // Plan mode: restrict to read-only + planning tools
         const isPlanMode = useUIStore.getState().planMode
@@ -1127,7 +1178,7 @@ export function useChatActions(): {
         })
 
         const agentSystemPrompt = buildSystemPrompt({
-          mode: mode as 'cowork' | 'code',
+          mode: mode as 'clarify' | 'cowork' | 'code',
           workingFolder: session?.workingFolder,
           userSystemPrompt: userPrompt || undefined,
           toolDefs: finalEffectiveToolDefs,
@@ -1267,7 +1318,8 @@ export function useChatActions(): {
           // Build and inject dynamic context into the last user message
           const sessionSnapshot = useChatStore.getState().sessions.find((s) => s.id === sessionId)
           const sessionMode = sessionSnapshot?.mode ?? uiStore.mode
-          const shouldInjectContext = sessionMode === 'cowork' || sessionMode === 'code'
+          const shouldInjectContext =
+            sessionMode === 'clarify' || sessionMode === 'cowork' || sessionMode === 'code'
 
           if (shouldInjectContext && messagesToSend.length > 0) {
             const { buildDynamicContext } = await import('@renderer/lib/agent/dynamic-context')
@@ -1532,11 +1584,13 @@ export function useChatActions(): {
                 })
                 break
 
-              case 'tool_use_args_delta':
+              case 'tool_use_args_delta': {
                 // Real-time partial args update via partial-json parsing
-                scheduleChatToolInputUpdate(event.toolCallId, event.partialInput)
-                scheduleToolInputUpdate(event.toolCallId, event.partialInput)
+                const compactPartialInput = compactStreamingToolInput(event.partialInput)
+                scheduleChatToolInputUpdate(event.toolCallId, compactPartialInput)
+                scheduleToolInputUpdate(event.toolCallId, compactPartialInput)
                 break
+              }
 
               case 'tool_use_generated':
                 // Args fully streamed — update the existing block's input (final)
@@ -1957,7 +2011,7 @@ export function sendImplementPlan(planId: string): void {
   usePlanStore.getState().startImplementing(planId)
 
   // 2. Exit plan mode
-  useUIStore.getState().exitPlanMode()
+  useUIStore.getState().exitPlanMode(plan.sessionId)
 
   // 3. Switch to Steps tab
   useUIStore.getState().setRightPanelTab('steps')
@@ -1979,9 +2033,11 @@ export function sendPlanRevision(planId: string, feedback: string): void {
   usePlanStore.getState().rejectPlan(planId)
 
   // 2. Enter plan mode and focus Plan panel
-  useUIStore.getState().enterPlanMode()
-  useUIStore.getState().setRightPanelTab('plan')
-  useUIStore.getState().setRightPanelOpen(true)
+  useUIStore.getState().enterPlanMode(plan.sessionId)
+  if (useChatStore.getState().activeSessionId === plan.sessionId) {
+    useUIStore.getState().setRightPanelTab('plan')
+    useUIStore.getState().setRightPanelOpen(true)
+  }
 
   // 3. Build revision prompt and send directly
   const prompt = [

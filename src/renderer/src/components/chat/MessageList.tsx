@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { MessageItem } from './MessageItem'
-import { MessageSquare, Briefcase, Code2, RefreshCw, ArrowDown, Loader2 } from 'lucide-react'
+import { MessageSquare, CircleHelp, Briefcase, Code2, RefreshCw, ArrowDown, Loader2 } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 
 import type { ContentBlock, ToolResultContent, UnifiedMessage } from '@renderer/lib/api/types'
@@ -17,6 +17,11 @@ const modeHints = {
     icon: <MessageSquare className="size-12 text-muted-foreground/20" />,
     titleKey: 'messageList.startConversation',
     descKey: 'messageList.startConversationDesc'
+  },
+  clarify: {
+    icon: <CircleHelp className="size-12 text-muted-foreground/20" />,
+    titleKey: 'messageList.startClarify',
+    descKey: 'messageList.startClarifyDesc'
   },
   cowork: {
     icon: <Briefcase className="size-12 text-muted-foreground/20" />,

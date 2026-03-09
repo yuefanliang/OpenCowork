@@ -2,6 +2,7 @@ import * as React from 'react'
 import { useEffect, useState } from 'react'
 import {
   MessageSquare,
+  CircleHelp,
   Briefcase,
   Code2,
   FolderOpen,
@@ -37,6 +38,7 @@ import {
 
 const modes: { value: AppMode; labelKey: string; icon: React.ReactNode }[] = [
   { value: 'chat', labelKey: 'mode.chat', icon: <MessageSquare className="size-3.5" /> },
+  { value: 'clarify', labelKey: 'mode.clarify', icon: <CircleHelp className="size-3.5" /> },
   { value: 'cowork', labelKey: 'mode.cowork', icon: <Briefcase className="size-3.5" /> },
   { value: 'code', labelKey: 'mode.code', icon: <Code2 className="size-3.5" /> }
 ]
@@ -226,47 +228,70 @@ export function ChatHomePage(): React.JSX.Element {
             toneClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
           }
         ]
-      : mode === 'cowork'
+      : mode === 'clarify'
         ? [
             {
-              prompt: t('messageList.summarizeProject'),
-              icon: <FolderOpen className="size-4" />,
-              toneClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+              prompt: t('messageList.clarifyIdea'),
+              icon: <CircleHelp className="size-4" />,
+              toneClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
             },
             {
-              prompt: t('messageList.findBugs'),
-              icon: <Server className="size-4" />,
+              prompt: t('messageList.challengeAssumptions'),
+              icon: <MessageSquare className="size-4" />,
               toneClass: 'bg-orange-500/10 text-orange-600 dark:text-orange-400'
             },
             {
-              prompt: t('messageList.addErrorHandling'),
-              icon: <Briefcase className="size-4" />,
-              toneClass: 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
+              prompt: t('messageList.exploreRisks'),
+              icon: <Sparkles className="size-4" />,
+              toneClass: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
             }
           ]
-        : [
-            {
-              prompt: t('messageList.buildCli'),
-              icon: <Code2 className="size-4" />,
-              toneClass: 'bg-violet-500/10 text-violet-600 dark:text-violet-400'
-            },
-            {
-              prompt: t('messageList.createRestApi'),
-              icon: <MessageSquare className="size-4" />,
-              toneClass: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400'
-            },
-            {
-              prompt: t('messageList.writeScript'),
-              icon: <Pencil className="size-4" />,
-              toneClass: 'bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400'
-            }
-          ]
+        : mode === 'cowork'
+          ? [
+              {
+                prompt: t('messageList.summarizeProject'),
+                icon: <FolderOpen className="size-4" />,
+                toneClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+              },
+              {
+                prompt: t('messageList.findBugs'),
+                icon: <Server className="size-4" />,
+                toneClass: 'bg-orange-500/10 text-orange-600 dark:text-orange-400'
+              },
+              {
+                prompt: t('messageList.addErrorHandling'),
+                icon: <Briefcase className="size-4" />,
+                toneClass: 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
+              }
+            ]
+          : [
+              {
+                prompt: t('messageList.buildCli'),
+                icon: <Code2 className="size-4" />,
+                toneClass: 'bg-violet-500/10 text-violet-600 dark:text-violet-400'
+              },
+              {
+                prompt: t('messageList.createRestApi'),
+                icon: <MessageSquare className="size-4" />,
+                toneClass: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400'
+              },
+              {
+                prompt: t('messageList.writeScript'),
+                icon: <Pencil className="size-4" />,
+                toneClass: 'bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400'
+              }
+            ]
 
   const modeHint = {
     chat: {
       icon: <MessageSquare className="size-7" />,
       title: t('messageList.startConversation'),
       desc: t('messageList.startConversationDesc')
+    },
+    clarify: {
+      icon: <CircleHelp className="size-7" />,
+      title: t('messageList.startClarify'),
+      desc: t('messageList.startClarifyDesc')
     },
     cowork: {
       icon: <Briefcase className="size-7" />,
@@ -282,6 +307,7 @@ export function ChatHomePage(): React.JSX.Element {
 
   const heroIconClass = {
     chat: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+    clarify: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
     cowork: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
     code: 'bg-violet-500/10 text-violet-600 dark:text-violet-400'
   }[mode]

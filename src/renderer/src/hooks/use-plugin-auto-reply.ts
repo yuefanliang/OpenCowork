@@ -282,7 +282,7 @@ async function _runPluginAgent(task: PluginAutoReplyTask): Promise<void> {
         const newSession = {
           id: sessionId,
           title: dbSession.title || resolvedTitle,
-          mode: (dbSession.mode as 'chat' | 'cowork' | 'code') || 'cowork',
+          mode: (dbSession.mode as 'chat' | 'clarify' | 'cowork' | 'code') || 'cowork',
           messages: [],
           messageCount: 0,
           messagesLoaded: true,

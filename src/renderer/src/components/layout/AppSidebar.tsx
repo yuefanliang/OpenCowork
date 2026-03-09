@@ -5,6 +5,7 @@ import { formatTokens } from '@renderer/lib/format-tokens'
 import {
   Plus,
   MessageSquare,
+  CircleHelp,
   Trash2,
   Eraser,
   Search,
@@ -68,6 +69,7 @@ import packageJson from '../../../../../package.json'
 
 const modeIcons: Record<SessionMode, React.ReactNode> = {
   chat: <MessageSquare className="size-4" />,
+  clarify: <CircleHelp className="size-4" />,
   cowork: <Briefcase className="size-4" />,
   code: <Code2 className="size-4" />
 }
@@ -631,7 +633,7 @@ export function AppSidebar(): React.JSX.Element {
                                 {t('sidebar.switchMode')}
                               </ContextMenuSubTrigger>
                               <ContextMenuSubContent>
-                                {(['chat', 'cowork', 'code'] as const).map((m) => (
+                                {(['chat', 'clarify', 'cowork', 'code'] as const).map((m) => (
                                   <ContextMenuItem
                                     key={m}
                                     disabled={session.mode === m}

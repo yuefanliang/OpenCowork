@@ -80,6 +80,7 @@
   },
   "mode": {
     "chat": "Chat",
+    "clarify": "Clarify",
     "cowork": "Cowork",
     "code": "Code"
   },

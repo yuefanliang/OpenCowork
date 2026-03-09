@@ -1,8 +1,8 @@
 import { create } from 'zustand'
 
-export type AppMode = 'chat' | 'cowork' | 'code'
+export type AppMode = 'chat' | 'clarify' | 'cowork' | 'code'
 
-export type NavItem = 'chat' | 'channels' | 'skills' | 'translate' | 'ssh'
+export type NavItem = 'chat' | 'channels' | 'skills' | 'draw' | 'translate' | 'ssh'
 
 export type ChatView = 'home' | 'session'
 
@@ -51,6 +51,45 @@ export type DetailPanelContent =
   | { type: 'terminal'; processId: string }
   | { type: 'document'; title: string; content: string }
   | { type: 'report'; title: string; data: unknown }
+
+function buildFilePreviewState(
+  filePath: string,
+  viewMode?: 'preview' | 'code',
+  sshConnectionId?: string
+): PreviewPanelState {
+  const ext =
+    filePath.lastIndexOf('.') >= 0 ? filePath.slice(filePath.lastIndexOf('.')).toLowerCase() : ''
+  const previewExts = new Set(['.html', '.htm'])
+  const spreadsheetExts = new Set(['.csv', '.tsv', '.xls', '.xlsx'])
+  const markdownExts = new Set(['.md', '.mdx', '.markdown'])
+  const imageExts = new Set(['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.ico'])
+  const docxExts = new Set(['.docx'])
+  const pdfExts = new Set(['.pdf'])
+  let viewerType = 'fallback'
+  if (previewExts.has(ext)) viewerType = 'html'
+  else if (spreadsheetExts.has(ext)) viewerType = 'spreadsheet'
+  else if (markdownExts.has(ext)) viewerType = 'markdown'
+  else if (imageExts.has(ext)) viewerType = 'image'
+  else if (docxExts.has(ext)) viewerType = 'docx'
+  else if (pdfExts.has(ext)) viewerType = 'pdf'
+  const previewTypes = new Set(['html', 'markdown', 'docx', 'pdf', 'image', 'spreadsheet'])
+  const defaultMode = previewTypes.has(viewerType) ? 'preview' : 'code'
+
+  return {
+    source: 'file',
+    filePath,
+    viewMode: viewMode ?? defaultMode,
+    viewerType,
+    sshConnectionId: sshConnectionId || undefined
+  }
+}
+
+function resolveScopedSessionId(
+  explicitSessionId: string | null | undefined,
+  currentSessionId: string | null
+): string | null {
+  return explicitSessionId ?? currentSessionId
+}
 
 interface UIStore {
   mode: AppMode
@@ -102,6 +141,10 @@ interface UIStore {
   openTranslatePage: () => void
   closeTranslatePage: () => void
 
+  drawPageOpen: boolean
+  openDrawPage: () => void
+  closeDrawPage: () => void
+
   sshPageOpen: boolean
   openSshPage: () => void
   closeSshPage: () => void
@@ -129,15 +172,21 @@ interface UIStore {
   /** Preview panel */
   previewPanelOpen: boolean
   previewPanelState: PreviewPanelState | null
+  previewPanelsBySession: Record<string, PreviewPanelState | null>
   openFilePreview: (
     filePath: string,
     viewMode?: 'preview' | 'code',
-    sshConnectionId?: string
+    sshConnectionId?: string,
+    sessionId?: string | null
   ) => void
-  openDevServerPreview: (projectDir: string, port: number) => void
-  openMarkdownPreview: (title: string, content: string) => void
-  closePreviewPanel: () => void
-  setPreviewViewMode: (mode: 'preview' | 'code') => void
+  openDevServerPreview: (projectDir: string, port: number, sessionId?: string | null) => void
+  openMarkdownPreview: (title: string, content: string, sessionId?: string | null) => void
+  closePreviewPanel: (sessionId?: string | null) => void
+  setPreviewViewMode: (mode: 'preview' | 'code', sessionId?: string | null) => void
+
+  /** Session-scoped UI state */
+  activeScopedSessionId: string | null
+  syncSessionScopedState: (sessionId: string | null) => void
 
   /** Selected files in file tree panel */
   selectedFiles: string[]
@@ -147,8 +196,10 @@ interface UIStore {
 
   /** Plan mode state */
   planMode: boolean
-  enterPlanMode: () => void
-  exitPlanMode: () => void
+  planModesBySession: Record<string, boolean>
+  isPlanModeEnabled: (sessionId?: string | null) => boolean
+  enterPlanMode: (sessionId?: string | null) => void
+  exitPlanMode: (sessionId?: string | null) => void
 
   /** Chat view navigation: 'home' = /chat homepage, 'session' = /chat/:id */
   chatView: ChatView
@@ -156,7 +207,7 @@ interface UIStore {
   navigateToSession: () => void
 }
 
-export const useUIStore = create<UIStore>((set) => ({
+export const useUIStore = create<UIStore>((set, get) => ({
   mode: 'chat',
 
   setMode: (mode) => set({ mode, rightPanelOpen: mode === 'cowork' }),
@@ -201,6 +252,7 @@ export const useUIStore = create<UIStore>((set) => ({
       leftSidebarOpen: false,
       skillsPageOpen: false,
       translatePageOpen: false,
+      drawPageOpen: false,
       sshPageOpen: false
     }),
   closeSettingsPage: () => set({ settingsPageOpen: false }),
@@ -212,6 +264,7 @@ export const useUIStore = create<UIStore>((set) => ({
       skillsPageOpen: true,
       settingsPageOpen: false,
       translatePageOpen: false,
+      drawPageOpen: false,
       sshPageOpen: false,
       leftSidebarOpen: false
     }),
@@ -223,10 +276,23 @@ export const useUIStore = create<UIStore>((set) => ({
       translatePageOpen: true,
       settingsPageOpen: false,
       skillsPageOpen: false,
+      drawPageOpen: false,
       sshPageOpen: false,
       leftSidebarOpen: false
     }),
   closeTranslatePage: () => set({ translatePageOpen: false }),
+
+  drawPageOpen: false,
+  openDrawPage: () =>
+    set({
+      drawPageOpen: true,
+      settingsPageOpen: false,
+      skillsPageOpen: false,
+      translatePageOpen: false,
+      sshPageOpen: false,
+      leftSidebarOpen: false
+    }),
+  closeDrawPage: () => set({ drawPageOpen: false }),
 
   sshPageOpen: false,
   openSshPage: () =>
@@ -235,6 +301,7 @@ export const useUIStore = create<UIStore>((set) => ({
       settingsPageOpen: false,
       skillsPageOpen: false,
       translatePageOpen: false,
+      drawPageOpen: false,
       leftSidebarOpen: false
     }),
   closeSshPage: () => set({ sshPageOpen: false }),
@@ -258,69 +325,174 @@ export const useUIStore = create<UIStore>((set) => ({
 
   previewPanelOpen: false,
   previewPanelState: null,
-  openFilePreview: (filePath, viewMode, sshConnectionId) => {
-    const ext =
-      filePath.lastIndexOf('.') >= 0 ? filePath.slice(filePath.lastIndexOf('.')).toLowerCase() : ''
-    const previewExts = new Set(['.html', '.htm'])
-    const spreadsheetExts = new Set(['.csv', '.tsv', '.xls', '.xlsx'])
-    const markdownExts = new Set(['.md', '.mdx', '.markdown'])
-    const imageExts = new Set(['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.ico'])
-    const docxExts = new Set(['.docx'])
-    const pdfExts = new Set(['.pdf'])
-    let viewerType = 'fallback'
-    if (previewExts.has(ext)) viewerType = 'html'
-    else if (spreadsheetExts.has(ext)) viewerType = 'spreadsheet'
-    else if (markdownExts.has(ext)) viewerType = 'markdown'
-    else if (imageExts.has(ext)) viewerType = 'image'
-    else if (docxExts.has(ext)) viewerType = 'docx'
-    else if (pdfExts.has(ext)) viewerType = 'pdf'
-    const previewTypes = new Set(['html', 'markdown', 'docx', 'pdf', 'image', 'spreadsheet'])
-    const defaultMode = previewTypes.has(viewerType) ? 'preview' : 'code'
-    set({
-      previewPanelOpen: true,
-      previewPanelState: {
-        source: 'file',
-        filePath,
-        viewMode: viewMode ?? defaultMode,
-        viewerType,
-        sshConnectionId: sshConnectionId || undefined
-      },
-      leftSidebarOpen: false,
-      rightPanelOpen: false
-    })
-  },
-  openDevServerPreview: (projectDir, port) =>
-    set({
-      previewPanelOpen: true,
-      previewPanelState: {
+  previewPanelsBySession: {},
+  activeScopedSessionId: null,
+  syncSessionScopedState: (sessionId) =>
+    set((state) => {
+      const scopedPreviewState = sessionId
+        ? (state.previewPanelsBySession[sessionId] ?? null)
+        : null
+      return {
+        activeScopedSessionId: sessionId,
+        planMode: sessionId ? !!state.planModesBySession[sessionId] : false,
+        previewPanelOpen: !!scopedPreviewState,
+        previewPanelState: scopedPreviewState
+      }
+    }),
+  openFilePreview: (filePath, viewMode, sshConnectionId, sessionId) =>
+    set((state) => {
+      const targetSessionId = resolveScopedSessionId(sessionId, state.activeScopedSessionId)
+      const nextPreviewState = buildFilePreviewState(filePath, viewMode, sshConnectionId)
+
+      if (!targetSessionId) {
+        return {
+          previewPanelOpen: true,
+          previewPanelState: nextPreviewState,
+          leftSidebarOpen: false,
+          rightPanelOpen: false
+        }
+      }
+
+      const nextPreviewPanelsBySession = {
+        ...state.previewPanelsBySession,
+        [targetSessionId]: nextPreviewState
+      }
+
+      if (state.activeScopedSessionId !== targetSessionId) {
+        return { previewPanelsBySession: nextPreviewPanelsBySession }
+      }
+
+      return {
+        previewPanelsBySession: nextPreviewPanelsBySession,
+        previewPanelOpen: true,
+        previewPanelState: nextPreviewState,
+        leftSidebarOpen: false,
+        rightPanelOpen: false
+      }
+    }),
+  openDevServerPreview: (projectDir, port, sessionId) =>
+    set((state) => {
+      const targetSessionId = resolveScopedSessionId(sessionId, state.activeScopedSessionId)
+      const nextPreviewState: PreviewPanelState = {
         source: 'dev-server',
         filePath: '',
         viewMode: 'preview',
         viewerType: 'dev-server',
         port,
         projectDir
-      },
-      leftSidebarOpen: false
+      }
+
+      if (!targetSessionId) {
+        return {
+          previewPanelOpen: true,
+          previewPanelState: nextPreviewState,
+          leftSidebarOpen: false
+        }
+      }
+
+      const nextPreviewPanelsBySession = {
+        ...state.previewPanelsBySession,
+        [targetSessionId]: nextPreviewState
+      }
+
+      if (state.activeScopedSessionId !== targetSessionId) {
+        return { previewPanelsBySession: nextPreviewPanelsBySession }
+      }
+
+      return {
+        previewPanelsBySession: nextPreviewPanelsBySession,
+        previewPanelOpen: true,
+        previewPanelState: nextPreviewState,
+        leftSidebarOpen: false
+      }
     }),
-  openMarkdownPreview: (title, content) =>
-    set({
-      previewPanelOpen: true,
-      previewPanelState: {
+  openMarkdownPreview: (title, content, sessionId) =>
+    set((state) => {
+      const targetSessionId = resolveScopedSessionId(sessionId, state.activeScopedSessionId)
+      const nextPreviewState: PreviewPanelState = {
         source: 'markdown',
         filePath: '',
         viewMode: 'preview',
         viewerType: 'markdown',
         markdownContent: content,
         markdownTitle: title
-      },
-      leftSidebarOpen: false,
-      rightPanelOpen: false
+      }
+
+      if (!targetSessionId) {
+        return {
+          previewPanelOpen: true,
+          previewPanelState: nextPreviewState,
+          leftSidebarOpen: false,
+          rightPanelOpen: false
+        }
+      }
+
+      const nextPreviewPanelsBySession = {
+        ...state.previewPanelsBySession,
+        [targetSessionId]: nextPreviewState
+      }
+
+      if (state.activeScopedSessionId !== targetSessionId) {
+        return { previewPanelsBySession: nextPreviewPanelsBySession }
+      }
+
+      return {
+        previewPanelsBySession: nextPreviewPanelsBySession,
+        previewPanelOpen: true,
+        previewPanelState: nextPreviewState,
+        leftSidebarOpen: false,
+        rightPanelOpen: false
+      }
     }),
-  closePreviewPanel: () => set({ previewPanelOpen: false, previewPanelState: null }),
-  setPreviewViewMode: (mode) =>
-    set((s) => ({
-      previewPanelState: s.previewPanelState ? { ...s.previewPanelState, viewMode: mode } : null
-    })),
+  closePreviewPanel: (sessionId) =>
+    set((state) => {
+      const targetSessionId = resolveScopedSessionId(sessionId, state.activeScopedSessionId)
+      if (!targetSessionId) {
+        return { previewPanelOpen: false, previewPanelState: null }
+      }
+
+      const nextPreviewPanelsBySession = { ...state.previewPanelsBySession }
+      delete nextPreviewPanelsBySession[targetSessionId]
+
+      if (state.activeScopedSessionId !== targetSessionId) {
+        return { previewPanelsBySession: nextPreviewPanelsBySession }
+      }
+
+      return {
+        previewPanelsBySession: nextPreviewPanelsBySession,
+        previewPanelOpen: false,
+        previewPanelState: null
+      }
+    }),
+  setPreviewViewMode: (mode, sessionId) =>
+    set((state) => {
+      const targetSessionId = resolveScopedSessionId(sessionId, state.activeScopedSessionId)
+      if (!targetSessionId) {
+        return {
+          previewPanelState: state.previewPanelState
+            ? { ...state.previewPanelState, viewMode: mode }
+            : null
+        }
+      }
+
+      const currentPreviewState = state.previewPanelsBySession[targetSessionId]
+      if (!currentPreviewState) return {}
+
+      const nextPreviewState = { ...currentPreviewState, viewMode: mode }
+      const nextPreviewPanelsBySession = {
+        ...state.previewPanelsBySession,
+        [targetSessionId]: nextPreviewState
+      }
+
+      if (state.activeScopedSessionId !== targetSessionId) {
+        return { previewPanelsBySession: nextPreviewPanelsBySession }
+      }
+
+      return {
+        previewPanelsBySession: nextPreviewPanelsBySession,
+        previewPanelState: nextPreviewState
+      }
+    }),
 
   selectedFiles: [],
   setSelectedFiles: (files) => set({ selectedFiles: files }),
@@ -336,7 +508,31 @@ export const useUIStore = create<UIStore>((set) => ({
   clearSelectedFiles: () => set({ selectedFiles: [] }),
 
   planMode: false,
-  enterPlanMode: () => set({ planMode: true, rightPanelTab: 'plan', rightPanelOpen: true }),
+  planModesBySession: {},
+  isPlanModeEnabled: (sessionId) => {
+    const targetSessionId = resolveScopedSessionId(sessionId, get().activeScopedSessionId)
+    if (!targetSessionId) return get().planMode
+    return !!get().planModesBySession[targetSessionId]
+  },
+  enterPlanMode: (sessionId) =>
+    set((state) => {
+      const targetSessionId = resolveScopedSessionId(sessionId, state.activeScopedSessionId)
+      if (!targetSessionId) {
+        return { planMode: true, rightPanelTab: 'plan', rightPanelOpen: true }
+      }
+
+      const nextPlanModesBySession = { ...state.planModesBySession, [targetSessionId]: true }
+      if (state.activeScopedSessionId !== targetSessionId) {
+        return { planModesBySession: nextPlanModesBySession }
+      }
+
+      return {
+        planModesBySession: nextPlanModesBySession,
+        planMode: true,
+        rightPanelTab: 'plan',
+        rightPanelOpen: true
+      }
+    }),
 
   chatView: 'home',
   navigateToHome: () =>
@@ -355,5 +551,23 @@ export const useUIStore = create<UIStore>((set) => ({
       translatePageOpen: false,
       sshPageOpen: false
     }),
-  exitPlanMode: () => set({ planMode: false })
+  exitPlanMode: (sessionId) =>
+    set((state) => {
+      const targetSessionId = resolveScopedSessionId(sessionId, state.activeScopedSessionId)
+      if (!targetSessionId) {
+        return { planMode: false }
+      }
+
+      const nextPlanModesBySession = { ...state.planModesBySession }
+      delete nextPlanModesBySession[targetSessionId]
+
+      if (state.activeScopedSessionId !== targetSessionId) {
+        return { planModesBySession: nextPlanModesBySession }
+      }
+
+      return {
+        planModesBySession: nextPlanModesBySession,
+        planMode: false
+      }
+    })
 }))

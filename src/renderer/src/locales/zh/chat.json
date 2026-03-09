@@ -1,6 +1,7 @@
 {
   "input": {
     "placeholder": "输入消息...",
+    "placeholderClarify": "描述你的想法，我会先不断追问把需求问透...",
     "placeholderCowork": "让助手帮你处理项目...",
     "placeholderCode": "描述你想构建的内容...",
     "noApiKey": "未配置 API Key，点击此处打开设置。",
@@ -158,6 +159,8 @@
   "messageList": {
     "startConversation": "开始对话",
     "startConversationDesc": "随意提问 — 纯对话，无工具。",
+    "startClarify": "开始澄清需求",
+    "startClarifyDesc": "先把目标、约束、风险和遗漏问清楚，再进入规划。只读模式，不会修改文件或执行命令。",
     "startCowork": "开始协作会话",
     "startCoworkDesc": "选择工作目录，然后让助手帮你处理项目。",
     "startCoding": "开始编程",
@@ -166,6 +169,9 @@
     "explainAsync": "解释 async/await 的工作原理",
     "compareRest": "比较 REST 和 GraphQL",
     "writeRegex": "写一个邮箱验证正则表达式",
+    "clarifyIdea": "通过连续提问帮我把这个产品想法问透",
+    "challengeAssumptions": "挑战这个方案里的隐含假设和模糊表述",
+    "exploreRisks": "找出这个方向的边界条件、失败模式和二阶影响",
     "summarizeProject": "总结项目结构",
     "findBugs": "查找并修复潜在 Bug",
     "addErrorHandling": "给主模块添加错误处理",

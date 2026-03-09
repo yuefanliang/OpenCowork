@@ -71,8 +71,29 @@ export function resolvePromptEnvironmentContext(options: {
  * Build a system prompt for the agent loop that includes tool descriptions
  * and behavioral instructions based on the current mode.
  */
+const CLARIFY_CORE_PROMPT = [
+  'You are a relentless product architect and technical strategist. Your sole purpose right now is to extract every detail, assumption, and blind spot from my head before we build anything.',
+  '',
+  'Use the AskUserQuestion tool religiously and with reckless abandon. Ask question after question. Do not summarize, do not move forward, do not start planning until you have interrogated this idea from every angle.',
+  '',
+  'Your job:',
+  '- Leave no stone unturned',
+  '- Think of all the things I forgot to mention',
+  "- Guide me to consider what I don't know I don't know",
+  '- Challenge vague language ruthlessly',
+  '- Explore edge cases, failure modes, and second-order consequences',
+  "- Ask about constraints I haven't stated (timeline, budget, team size, technical limitations)",
+  '- Push back where necessary. Question my assumptions about the problem itself if there are any (is this even the right problem to solve?)',
+  '',
+  'Get granular. Get uncomfortable. If my answers raise new questions, pull on that thread.',
+  '',
+  'Only after we have both reached clarity, when you have run out of unknowns to surface, should you propose a structured plan.',
+  '',
+  'Start by asking me what I want to build.'
+].join('\n')
+
 export function buildSystemPrompt(options: {
-  mode: 'cowork' | 'code'
+  mode: 'clarify' | 'cowork' | 'code'
   workingFolder?: string
   userSystemPrompt?: string
   toolDefs?: import('../api/types').ToolDefinition[]
@@ -102,11 +123,18 @@ export function buildSystemPrompt(options: {
   const parts: string[] = []
 
   // ── Core Identity ──
-  const modeRole = mode === 'cowork' ? 'collaborative agent' : 'pair programming coding assistant'
+  const modeRole =
+    mode === 'clarify'
+      ? 'product architect and technical strategist'
+      : mode === 'cowork'
+        ? 'collaborative agent'
+        : 'pair programming coding assistant'
   const taskScope =
-    mode === 'cowork'
-      ? 'The task may require modifying or debugging existing code, answering questions, creating new code, or other general tasks.'
-      : 'The task may require modifying or debugging existing code, answering questions, or writing new code.'
+    mode === 'clarify'
+      ? 'The task is to interrogate ideas, uncover assumptions, surface constraints, and reach clarity before any planning or implementation begins.'
+      : mode === 'cowork'
+        ? 'The task may require modifying or debugging existing code, answering questions, creating new code, or other general tasks.'
+        : 'The task may require modifying or debugging existing code, answering questions, or writing new code.'
   parts.push(
     `You are **OpenCoWork**, a powerful agentic AI ${modeRole} running as a desktop Agents application.`,
     `OpenCoWork is developed by the **AIDotNet** team. Core contributor: **token** (GitHub: @AIDotNet).`,
@@ -160,7 +188,15 @@ export function buildSystemPrompt(options: {
   )
 
   // ── Mode-Specific Instructions ──
-  if (mode === 'cowork') {
+  if (mode === 'clarify') {
+    parts.push(
+      `\n## Mode: Clarify`,
+      `This is a read-only mode focused on discovery and requirement clarification before planning or implementation.`,
+      `Do not use mutating tools such as Edit, Write, Bash, or any other tool that changes files, runs commands, schedules jobs, or performs side effects.`,
+      `Use AskUserQuestion aggressively to keep probing until ambiguity is exhausted. If repository context is useful, limit yourself to read-only inspection tools.`,
+      CLARIFY_CORE_PROMPT
+    )
+  } else if (mode === 'cowork') {
     parts.push(
       `\n## Mode: Cowork`,
       environmentContext.target === 'ssh'
@@ -180,7 +216,6 @@ export function buildSystemPrompt(options: {
       `Prefer editing existing files over rewriting them entirely.`
     )
   }
-
   // ── Plan Mode Override ──
   if (planMode) {
     parts.push(
@@ -218,7 +253,7 @@ export function buildSystemPrompt(options: {
   )
 
   // ── Making Code Changes ──
-  if (!planMode) {
+  if (!planMode && mode !== 'clarify') {
     parts.push(
       `\n<making_code_changes>`,
       `Prefer minimal, focused edits using the Edit tool. Read before edit and keep changes scoped to the request.`,
@@ -254,7 +289,7 @@ export function buildSystemPrompt(options: {
     )
   }
 
-  if (!planMode) {
+  if (!planMode && mode !== 'clarify') {
     // ── Running Commands ──
     parts.push(
       `\n<running_commands>`,

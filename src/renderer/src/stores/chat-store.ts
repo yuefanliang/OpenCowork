@@ -17,7 +17,7 @@ import { usePlanStore } from './plan-store'
 import { useUIStore } from './ui-store'
 import { useProviderStore } from './provider-store'
 
-export type SessionMode = 'chat' | 'cowork' | 'code'
+export type SessionMode = 'chat' | 'clarify' | 'cowork' | 'code'
 
 export interface Project {
   id: string
@@ -472,6 +472,7 @@ export const useChatStore = create<ChatStore>()(
       })
       if (nextSessionId) {
         void get().loadRecentSessionMessages(nextSessionId)
+        useUIStore.getState().syncSessionScopedState(nextSessionId)
       }
     },
 
@@ -619,6 +620,7 @@ export const useChatStore = create<ChatStore>()(
         useTaskStore.getState().clearTasks()
         usePlanStore.getState().setActivePlan(null)
       }
+      useUIStore.getState().syncSessionScopedState(nextActiveSessionId)
 
       if (shouldEnsureDefaultProject) {
         await get().ensureDefaultProject()
@@ -847,6 +849,7 @@ export const useChatStore = create<ChatStore>()(
           useTaskStore.getState().clearTasks()
           usePlanStore.getState().setActivePlan(null)
         }
+        useUIStore.getState().syncSessionScopedState(nextActiveSessionId)
       } catch (err) {
         console.error('[ChatStore] Failed to load from DB:', err)
         set({ _loaded: true })
@@ -916,9 +919,7 @@ export const useChatStore = create<ChatStore>()(
       }
       useTaskStore.getState().clearTasks()
       usePlanStore.getState().setActivePlan(null)
-      if (useUIStore.getState().planMode) {
-        useUIStore.getState().exitPlanMode()
-      }
+      useUIStore.getState().syncSessionScopedState(id)
       return id
     },
 
@@ -952,6 +953,7 @@ export const useChatStore = create<ChatStore>()(
         useTaskStore.getState().clearTasks()
         usePlanStore.getState().setActivePlan(null)
       }
+      useUIStore.getState().syncSessionScopedState(nextActiveId)
       const agentState = useAgentStore.getState()
       agentState.setSessionStatus(id, null)
       agentState.clearSessionData(id)
@@ -973,9 +975,7 @@ export const useChatStore = create<ChatStore>()(
         }
         state.streamingMessageId = id ? (state.streamingMessages[id] ?? null) : null
       })
-      if (prevId !== id && useUIStore.getState().planMode) {
-        useUIStore.getState().exitPlanMode()
-      }
+      useUIStore.getState().syncSessionScopedState(id)
       // Switch per-session tool calls in agent-store
       useAgentStore.getState().switchToolCallSession(prevId, id)
       // Restore per-session model selection to global provider store
@@ -1149,6 +1149,7 @@ export const useChatStore = create<ChatStore>()(
       useTaskStore.getState().clearTasks()
       const activePlan = usePlanStore.getState().getPlanBySession(normalizedSession.id)
       usePlanStore.getState().setActivePlan(activePlan?.id ?? null)
+      useUIStore.getState().syncSessionScopedState(normalizedSession.id)
     },
 
     clearAllSessions: () => {
@@ -1171,6 +1172,7 @@ export const useChatStore = create<ChatStore>()(
         taskState.deleteSessionTasks(id)
       }
       agentState.clearToolCalls()
+      useUIStore.getState().syncSessionScopedState(null)
       dbClearAllSessions()
     },
 
@@ -1231,6 +1233,7 @@ export const useChatStore = create<ChatStore>()(
       clonedMessages.forEach((msg, i) => dbAddMessage(newId, msg, i))
       useTaskStore.getState().clearTasks()
       usePlanStore.getState().setActivePlan(null)
+      useUIStore.getState().syncSessionScopedState(newId)
       return newId
     },
 

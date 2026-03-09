@@ -80,6 +80,7 @@
   },
   "mode": {
     "chat": "对话",
+    "clarify": "澄清",
     "cowork": "协作",
     "code": "编程"
   },

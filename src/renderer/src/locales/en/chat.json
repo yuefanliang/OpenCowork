@@ -1,6 +1,7 @@
 {
   "input": {
     "placeholder": "Type a message...",
+    "placeholderClarify": "Describe your idea and I will keep probing until the requirements are clear...",
     "placeholderCowork": "Ask the assistant to help with your project...",
     "placeholderCode": "Describe what you want to build...",
     "noApiKey": "No API key configured. Click here to open Settings.",
@@ -158,6 +159,8 @@
   "messageList": {
     "startConversation": "Start a conversation",
     "startConversationDesc": "Ask anything — no tools, just chat.",
+    "startClarify": "Start clarifying",
+    "startClarifyDesc": "Interrogate the goal, constraints, risks, and gaps before planning. Read-only mode with no file edits or commands.",
     "startCowork": "Start a Cowork session",
     "startCoworkDesc": "Select a working folder, then ask the assistant to help with your project.",
     "startCoding": "Start coding",
@@ -166,6 +169,9 @@
     "explainAsync": "Explain how async/await works",
     "compareRest": "Compare REST vs GraphQL",
     "writeRegex": "Write a regex for email validation",
+    "clarifyIdea": "Interrogate this product idea with relentless follow-up questions",
+    "challengeAssumptions": "Challenge the hidden assumptions and vague language in this proposal",
+    "exploreRisks": "Surface edge cases, failure modes, and second-order consequences",
     "summarizeProject": "Summarize this project structure",
     "findBugs": "Find and fix potential bugs",
     "addErrorHandling": "Add error handling to the main module",

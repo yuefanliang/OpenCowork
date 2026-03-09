@@ -177,6 +177,7 @@ function ActiveMcpsBadge(): React.JSX.Element | null {
 
 const placeholderKeys: Record<AppMode, string> = {
   chat: 'input.placeholder',
+  clarify: 'input.placeholderClarify',
   cowork: 'input.placeholderCowork',
   code: 'input.placeholderCode'
 }

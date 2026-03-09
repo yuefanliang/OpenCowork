@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   MessageSquare,
+  CircleHelp,
   Briefcase,
   Code2,
   ClipboardCopy,
@@ -39,6 +40,7 @@ import { SettingsPage } from '@renderer/components/settings/SettingsPage'
 import { ChatHomePage } from '@renderer/components/chat/ChatHomePage'
 import { SkillsPage } from '@renderer/components/skills/SkillsPage'
 import { TranslatePage } from '@renderer/components/translate/TranslatePage'
+import { DrawPage } from '@renderer/components/draw/DrawPage'
 import { SshPage } from '@renderer/components/ssh/SshPage'
 import { KeyboardShortcutsDialog } from '@renderer/components/settings/KeyboardShortcutsDialog'
 import { PermissionDialog } from '@renderer/components/cowork/PermissionDialog'
@@ -60,6 +62,7 @@ import { useShallow } from 'zustand/react/shallow'
 
 const modes: { value: AppMode; labelKey: string; icon: React.ReactNode }[] = [
   { value: 'chat', labelKey: 'mode.chat', icon: <MessageSquare className="size-3.5" /> },
+  { value: 'clarify', labelKey: 'mode.clarify', icon: <CircleHelp className="size-3.5" /> },
   { value: 'cowork', labelKey: 'mode.cowork', icon: <Briefcase className="size-3.5" /> },
   { value: 'code', labelKey: 'mode.code', icon: <Code2 className="size-3.5" /> }
 ]
@@ -110,6 +113,7 @@ export function Layout(): React.JSX.Element {
   )
   const { activeSessionTitle, activeSessionMode, activeWorkingFolder } = activeSessionView
   const activeSessionId = useChatStore((s) => s.activeSessionId)
+  const updateSessionMode = useChatStore((s) => s.updateSessionMode)
   const streamingMessageId = useChatStore((s) => s.streamingMessageId)
   const isStreaming = !!streamingMessageId
   const pendingToolCallCount = useAgentStore((s) => s.pendingToolCalls.length)
@@ -176,6 +180,16 @@ export function Layout(): React.JSX.Element {
     }
   }, [folderDialogOpen])
 
+  const handleModeChange = useCallback(
+    (nextMode: AppMode): void => {
+      setMode(nextMode)
+      if (chatView === 'session' && activeSessionId) {
+        updateSessionMode(activeSessionId, nextMode)
+      }
+    },
+    [activeSessionId, chatView, setMode, updateSessionMode]
+  )
+
   useEffect(() => {
     if (mode === 'chat') {
       setDesktopDirectories([])
@@ -219,20 +233,20 @@ export function Layout(): React.JSX.Element {
     }
   }, [activeSessionId, activeSessionMode])
 
-  // Close detail/preview panels when switching sessions (they are session-specific)
+  // Close detail panel when switching sessions
   const prevActiveSessionRef = useRef<string | null>(null)
   useEffect(() => {
     const prev = prevActiveSessionRef.current
     prevActiveSessionRef.current = activeSessionId
     if (prev !== null && prev !== activeSessionId) {
       useUIStore.getState().closeDetailPanel()
-      useUIStore.getState().closePreviewPanel()
     }
   }, [activeSessionId])
 
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen)
   const settingsPageOpen = useUIStore((s) => s.settingsPageOpen)
   const skillsPageOpen = useUIStore((s) => s.skillsPageOpen)
+  const drawPageOpen = useUIStore((s) => s.drawPageOpen)
   const translatePageOpen = useUIStore((s) => s.translatePageOpen)
   const sshPageOpen = useUIStore((s) => s.sshPageOpen)
   const sshPageEverOpened = useRef(false)
@@ -250,13 +264,19 @@ export function Layout(): React.JSX.Element {
     }
   }, [_loaded])
 
+  const getActiveSessionSnapshot = useCallback(
+    (): ReturnType<typeof useChatStore.getState>['sessions'][number] | undefined =>
+      useChatStore.getState().sessions.find((session) => session.id === activeSessionId),
+    [activeSessionId]
+  )
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent): Promise<void> => {
       // Ctrl+Shift+N: New session in next mode — navigate to home
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'N' || e.key === 'n')) {
         e.preventDefault()
-        const modes = ['chat', 'cowork', 'code'] as const
+        const modes = ['chat', 'clarify', 'cowork', 'code'] as const
         const nextMode = modes[(modes.indexOf(mode) + 1) % modes.length]
         useUIStore.getState().setMode(nextMode)
         useUIStore.getState().navigateToHome()
@@ -273,11 +293,11 @@ export function Layout(): React.JSX.Element {
         e.preventDefault()
         useUIStore.getState().openSettingsPage()
       }
-      // Ctrl+1/2/3: Switch mode
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && ['1', '2', '3'].includes(e.key)) {
+      // Ctrl+1/2/3/4: Switch mode
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && ['1', '2', '3', '4'].includes(e.key)) {
         e.preventDefault()
-        const modeMap = { '1': 'chat', '2': 'cowork', '3': 'code' } as const
-        useUIStore.getState().setMode(modeMap[e.key as '1' | '2' | '3'])
+        const modeMap = { '1': 'chat', '2': 'clarify', '3': 'cowork', '4': 'code' } as const
+        handleModeChange(modeMap[e.key as '1' | '2' | '3' | '4'])
       }
       // Ctrl+B: Toggle left sidebar
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === 'b') {
@@ -520,7 +540,9 @@ export function Layout(): React.JSX.Element {
     resolvedTheme,
     stopStreaming,
     streamingMessageId,
-    t
+    t,
+    getActiveSessionSnapshot,
+    handleModeChange
   ])
 
   const resolveActiveProjectId = async (): Promise<string | null> => {
@@ -538,11 +560,6 @@ export function Layout(): React.JSX.Element {
     if (!projectId) return
     chatStore.updateProjectDirectory(projectId, patch)
   }
-
-  const getActiveSessionSnapshot = ():
-    | ReturnType<typeof useChatStore.getState>['sessions'][number]
-    | undefined =>
-    useChatStore.getState().sessions.find((session) => session.id === activeSessionId)
 
   const handleOpenFolderDialog = (): void => {
     setFolderDialogOpen(true)
@@ -717,6 +734,13 @@ export function Layout(): React.JSX.Element {
                   >
                     <SettingsPage />
                   </PageTransition>
+                ) : drawPageOpen ? (
+                  <PageTransition
+                    key="draw-page"
+                    className="flex-1 min-w-0 bg-background overflow-hidden"
+                  >
+                    <DrawPage />
+                  </PageTransition>
                 ) : translatePageOpen ? (
                   <PageTransition
                     key="translate-page"
@@ -833,7 +857,7 @@ export function Layout(): React.JSX.Element {
                                           ? 'bg-background shadow-sm ring-1 ring-border/50'
                                           : 'text-muted-foreground hover:text-foreground'
                                       )}
-                                      onClick={() => setMode(m.value)}
+                                      onClick={() => handleModeChange(m.value)}
                                     >
                                       {m.icon}
                                       {tCommon(m.labelKey)}
