@@ -3,6 +3,11 @@
 All notable changes to **OpenCowork** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.5.1] - 2026-03-10
+
+### Changed
+- 准备 0.5.1 发布：同步版本号及首页展示内容。
+
 ## [0.5.0] - 2026-03-09
 
 ### Added
