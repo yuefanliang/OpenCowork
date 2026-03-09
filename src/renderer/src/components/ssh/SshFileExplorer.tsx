@@ -213,8 +213,14 @@ export function SshFileExplorer({
   const [newItemType, setNewItemType] = useState<'file' | 'directory'>('file')
 
   useEffect(() => {
-    setRenamingPath(null)
-    setNewItemParent(null)
+    const timer = window.setTimeout(() => {
+      setRenamingPath(null)
+      setNewItemParent(null)
+    }, 0)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
   }, [effectiveBaseRoot, sessionId])
 
   useEffect(() => {
@@ -477,14 +483,14 @@ export function SshFileExplorer({
       store.openTab({
         id: tabId,
         type: 'file',
-        sessionId: null,
+        sessionId,
         connectionId,
         connectionName,
         title: entry.name,
         filePath: entry.path
       })
     },
-    [connectionId, connectionName, t]
+    [connectionId, connectionName, sessionId, t]
   )
 
   const handleDelete = useCallback(
@@ -582,311 +588,288 @@ export function SshFileExplorer({
   const rootLoadingMore = rootLoading && hasRootLoaded
   const rootHasMore = pageInfoByPath[effectiveBaseRoot]?.hasMore ?? false
 
-  const renderEntries = useCallback(
-    (entries: SshFileEntry[]): React.ReactNode => {
-      return entries.map((entry) => {
-        if (entry.type === 'directory') {
-          const hasLoaded = Object.prototype.hasOwnProperty.call(entriesByPath, entry.path)
-          const error = errorsByPath[entry.path]
-          const isLoading = loadingByPath[entry.path] ?? false
-          const children = hasLoaded ? (entriesByPath[entry.path] ?? []) : []
-          const isInitialLoading = !hasLoaded && !error
-          const isLoadingMore = isLoading && hasLoaded
-          const pageInfo = pageInfoByPath[entry.path]
-          const hasMore = pageInfo?.hasMore ?? false
-          const isRenaming = renamingPath === entry.path
-          const showNewItem = newItemParent === entry.path
-
-          return (
-            <FolderItem key={entry.path} value={entry.path}>
-              <ContextMenu>
-                <ContextMenuTrigger asChild>
-                  <div
-                    className="w-full"
-                    onClick={() => {
-                      handleSelectPath(entry.path)
-                      const store = useSshStore.getState()
-                      const sessionEntries = store.fileExplorerEntries[sessionId] ?? {}
-                      if (!Object.prototype.hasOwnProperty.call(sessionEntries, entry.path)) {
-                        void store.loadFileExplorerEntries(sessionId, entry.path)
-                      }
-                    }}
-                  >
-                    <FolderTrigger>
-                      {isRenaming ? (
-                        <input
-                          autoFocus
-                          className="pointer-events-auto w-full min-w-[120px] rounded border border-border bg-muted/60 px-2 py-0.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
-                          defaultValue={entry.name}
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              const val = (e.target as HTMLInputElement).value.trim()
-                              if (val) void handleRenameConfirm(entry, val)
-                              else setRenamingPath(null)
-                            }
-                            if (e.key === 'Escape') setRenamingPath(null)
-                          }}
-                          onBlur={() => setRenamingPath(null)}
-                        />
-                      ) : (
-                        <span className="inline-flex items-center gap-1">
-                          <ChevronRight
-                            className={cn(
-                              'size-3 shrink-0 text-muted-foreground transition-transform duration-200',
-                              expandedDirs.has(entry.path) && 'rotate-90'
-                            )}
-                          />
-                          <span className="truncate">{entry.name}</span>
-                        </span>
-                      )}
-                    </FolderTrigger>
-                  </div>
-                </ContextMenuTrigger>
-                <ContextMenuContent className="w-44">
-                  <ContextMenuItem
-                    className="gap-2 text-xs"
-                    onSelect={() => {
-                      handleSelectPath(entry.path)
-                      ensureExpanded(entry.path)
-                    }}
-                  >
-                    <Folder className="size-3.5" />
-                    {t('fileExplorer.open')}
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    className="gap-2 text-xs"
-                    onSelect={() => void handleZipDir(entry.path)}
-                  >
-                    <FileArchive className="size-3.5" />
-                    {t('fileExplorer.zipDir')}
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    className="gap-2 text-xs"
-                    onSelect={() => void handleUploadFileToDir(entry.path)}
-                  >
-                    <FilePlus2 className="size-3.5" />
-                    {t('fileExplorer.uploadFile')}
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    className="gap-2 text-xs"
-                    onSelect={() => void handleUploadFolderToDir(entry.path)}
-                  >
-                    <FolderPlus className="size-3.5" />
-                    {t('fileExplorer.uploadFolder')}
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    className="gap-2 text-xs"
-                    onSelect={() => handleRefreshDir(entry.path)}
-                  >
-                    <RefreshCw className="size-3.5" />
-                    {t('fileExplorer.refresh')}
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    className="gap-2 text-xs"
-                    onSelect={() => handleNewFile(entry.path)}
-                  >
-                    <FilePlus2 className="size-3.5" />
-                    {t('fileExplorer.newFile')}
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    className="gap-2 text-xs"
-                    onSelect={() => handleNewFolder(entry.path)}
-                  >
-                    <FolderPlus className="size-3.5" />
-                    {t('fileExplorer.newFolder')}
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem
-                    className="gap-2 text-xs"
-                    onSelect={() => {
-                      setRenamingPath(entry.path)
-                      setNewItemParent(null)
-                    }}
-                  >
-                    <Pencil className="size-3.5" />
-                    {t('fileExplorer.rename')}
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    className="gap-2 text-xs"
-                    onSelect={() => navigator.clipboard.writeText(entry.path)}
-                  >
-                    <Copy className="size-3.5" />
-                    {t('fileExplorer.copyPath')}
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem
-                    className="gap-2 text-xs text-destructive focus:text-destructive"
-                    onSelect={() => void handleDelete(entry)}
-                  >
-                    <Trash2 className="size-3.5" />
-                    {t('fileExplorer.delete')}
-                  </ContextMenuItem>
-                </ContextMenuContent>
-              </ContextMenu>
-              <FolderContent>
-                {error && children.length === 0 ? (
-                  <div className="px-2 py-1 text-xs text-muted-foreground">
-                    {t('fileExplorer.error')}
-                  </div>
-                ) : isInitialLoading ? (
-                  <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
-                    <Loader2 className="size-3 animate-spin" />
-                    {t('fileExplorer.loading')}
-                  </div>
-                ) : children.length === 0 && !showNewItem ? (
-                  <div className="px-2 py-1 text-xs text-muted-foreground">
-                    {t('fileExplorer.empty')}
-                  </div>
-                ) : (
-                  <>
-                    {showNewItem && (
-                      <InlineInput
-                        defaultValue={newItemType === 'directory' ? 'new-folder' : 'untitled'}
-                        icon={
-                          newItemType === 'directory' ? (
-                            <Folder className="size-4 text-amber-400" />
-                          ) : (
-                            <File className="size-4 text-muted-foreground" />
-                          )
-                        }
-                        onConfirm={(value) => void handleNewItemConfirm(value)}
-                        onCancel={() => setNewItemParent(null)}
-                      />
-                    )}
-                    {children.length > 0 && <SubFiles>{renderEntries(children)}</SubFiles>}
-                    {isLoadingMore && (
-                      <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
-                        <Loader2 className="size-3 animate-spin" />
-                        {t('fileExplorer.loadingMore')}
-                      </div>
-                    )}
-                    {!isLoadingMore && hasMore && (
-                      <div className="px-2 py-1">
-                        <button
-                          className="pointer-events-auto text-xs text-muted-foreground hover:text-foreground"
-                          onClick={() => handleLoadMore(entry.path)}
-                        >
-                          {t('fileExplorer.loadMore')}
-                        </button>
-                      </div>
-                    )}
-                    {error && children.length > 0 && (
-                      <div className="px-2 py-1 text-xs text-muted-foreground">
-                        {t('fileExplorer.error')}
-                      </div>
-                    )}
-                  </>
-                )}
-              </FolderContent>
-            </FolderItem>
-          )
-        }
-
+  function renderEntries(entries: SshFileEntry[]): React.ReactNode {
+    return entries.map((entry) => {
+      if (entry.type === 'directory') {
+        const hasLoaded = Object.prototype.hasOwnProperty.call(entriesByPath, entry.path)
+        const error = errorsByPath[entry.path]
+        const isLoading = loadingByPath[entry.path] ?? false
+        const children = hasLoaded ? (entriesByPath[entry.path] ?? []) : []
+        const isInitialLoading = !hasLoaded && !error
+        const isLoadingMore = isLoading && hasLoaded
+        const pageInfo = pageInfoByPath[entry.path]
+        const hasMore = pageInfo?.hasMore ?? false
         const isRenaming = renamingPath === entry.path
+        const showNewItem = newItemParent === entry.path
+
         return (
-          <ContextMenu key={entry.path}>
-            <ContextMenuTrigger asChild>
-              <div
-                className="w-full"
-                onClick={() => {
-                  handleSelectPath(entry.path)
-                  if (!isRenaming) openFileTab(entry)
-                }}
-              >
-                <FileItem icon={getFileIconComponent(entry.name)} className="text-sm">
-                  {isRenaming ? (
-                    <input
-                      autoFocus
-                      className="pointer-events-auto w-full min-w-[120px] rounded border border-border bg-muted/60 px-2 py-0.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
-                      defaultValue={entry.name}
-                      onClick={(e) => e.stopPropagation()}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          const val = (e.target as HTMLInputElement).value.trim()
-                          if (val) void handleRenameConfirm(entry, val)
-                          else setRenamingPath(null)
-                        }
-                        if (e.key === 'Escape') setRenamingPath(null)
-                      }}
-                      onBlur={() => setRenamingPath(null)}
+          <FolderItem key={entry.path} value={entry.path}>
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <div
+                  className="w-full"
+                  onClick={() => {
+                    handleSelectPath(entry.path)
+                    const store = useSshStore.getState()
+                    const sessionEntries = store.fileExplorerEntries[sessionId] ?? {}
+                    if (!Object.prototype.hasOwnProperty.call(sessionEntries, entry.path)) {
+                      void store.loadFileExplorerEntries(sessionId, entry.path)
+                    }
+                  }}
+                >
+                  <FolderTrigger>
+                    {isRenaming ? (
+                      <input
+                        autoFocus
+                        className="pointer-events-auto w-full min-w-[120px] rounded border border-border bg-muted/60 px-2 py-0.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
+                        defaultValue={entry.name}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const val = (e.target as HTMLInputElement).value.trim()
+                            if (val) void handleRenameConfirm(entry, val)
+                            else setRenamingPath(null)
+                          }
+                          if (e.key === 'Escape') setRenamingPath(null)
+                        }}
+                        onBlur={() => setRenamingPath(null)}
+                      />
+                    ) : (
+                      <span className="inline-flex items-center gap-1">
+                        <ChevronRight
+                          className={cn(
+                            'size-3 shrink-0 text-muted-foreground transition-transform duration-200',
+                            expandedDirs.has(entry.path) && 'rotate-90'
+                          )}
+                        />
+                        <span className="truncate">{entry.name}</span>
+                      </span>
+                    )}
+                  </FolderTrigger>
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="w-44">
+                <ContextMenuItem
+                  className="gap-2 text-xs"
+                  onSelect={() => {
+                    handleSelectPath(entry.path)
+                    ensureExpanded(entry.path)
+                  }}
+                >
+                  <Folder className="size-3.5" />
+                  {t('fileExplorer.open')}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  className="gap-2 text-xs"
+                  onSelect={() => void handleZipDir(entry.path)}
+                >
+                  <FileArchive className="size-3.5" />
+                  {t('fileExplorer.zipDir')}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  className="gap-2 text-xs"
+                  onSelect={() => void handleUploadFileToDir(entry.path)}
+                >
+                  <FilePlus2 className="size-3.5" />
+                  {t('fileExplorer.uploadFile')}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  className="gap-2 text-xs"
+                  onSelect={() => void handleUploadFolderToDir(entry.path)}
+                >
+                  <FolderPlus className="size-3.5" />
+                  {t('fileExplorer.uploadFolder')}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  className="gap-2 text-xs"
+                  onSelect={() => handleRefreshDir(entry.path)}
+                >
+                  <RefreshCw className="size-3.5" />
+                  {t('fileExplorer.refresh')}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  className="gap-2 text-xs"
+                  onSelect={() => handleNewFile(entry.path)}
+                >
+                  <FilePlus2 className="size-3.5" />
+                  {t('fileExplorer.newFile')}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  className="gap-2 text-xs"
+                  onSelect={() => handleNewFolder(entry.path)}
+                >
+                  <FolderPlus className="size-3.5" />
+                  {t('fileExplorer.newFolder')}
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  className="gap-2 text-xs"
+                  onSelect={() => {
+                    setRenamingPath(entry.path)
+                    setNewItemParent(null)
+                  }}
+                >
+                  <Pencil className="size-3.5" />
+                  {t('fileExplorer.rename')}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  className="gap-2 text-xs"
+                  onSelect={() => navigator.clipboard.writeText(entry.path)}
+                >
+                  <Copy className="size-3.5" />
+                  {t('fileExplorer.copyPath')}
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  className="gap-2 text-xs text-destructive focus:text-destructive"
+                  onSelect={() => void handleDelete(entry)}
+                >
+                  <Trash2 className="size-3.5" />
+                  {t('fileExplorer.delete')}
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
+            <FolderContent>
+              {error && children.length === 0 ? (
+                <div className="px-2 py-1 text-xs text-muted-foreground">
+                  {t('fileExplorer.error')}
+                </div>
+              ) : isInitialLoading ? (
+                <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
+                  <Loader2 className="size-3 animate-spin" />
+                  {t('fileExplorer.loading')}
+                </div>
+              ) : children.length === 0 && !showNewItem ? (
+                <div className="px-2 py-1 text-xs text-muted-foreground">
+                  {t('fileExplorer.empty')}
+                </div>
+              ) : (
+                <>
+                  {showNewItem && (
+                    <InlineInput
+                      defaultValue={newItemType === 'directory' ? 'new-folder' : 'untitled'}
+                      icon={
+                        newItemType === 'directory' ? (
+                          <Folder className="size-4 text-amber-400" />
+                        ) : (
+                          <File className="size-4 text-muted-foreground" />
+                        )
+                      }
+                      onConfirm={(value) => void handleNewItemConfirm(value)}
+                      onCancel={() => setNewItemParent(null)}
                     />
-                  ) : (
-                    entry.name
                   )}
-                </FileItem>
-              </div>
-            </ContextMenuTrigger>
-            <ContextMenuContent className="w-44">
-              <ContextMenuItem
-                className="gap-2 text-xs"
-                onSelect={() => {
-                  handleSelectPath(entry.path)
-                  openFileTab(entry)
-                }}
-              >
-                <FileText className="size-3.5" />
-                {t('fileExplorer.open')}
-              </ContextMenuItem>
-              <ContextMenuItem
-                className="gap-2 text-xs"
-                onSelect={() => void handleDownloadFile(entry)}
-              >
-                <Download className="size-3.5" />
-                {t('fileExplorer.download')}
-              </ContextMenuItem>
-              <ContextMenuItem
-                className="gap-2 text-xs"
-                onSelect={() => {
-                  setRenamingPath(entry.path)
-                  setNewItemParent(null)
-                }}
-              >
-                <Pencil className="size-3.5" />
-                {t('fileExplorer.rename')}
-              </ContextMenuItem>
-              <ContextMenuItem
-                className="gap-2 text-xs"
-                onSelect={() => navigator.clipboard.writeText(entry.path)}
-              >
-                <Copy className="size-3.5" />
-                {t('fileExplorer.copyPath')}
-              </ContextMenuItem>
-              <ContextMenuSeparator />
-              <ContextMenuItem
-                className="gap-2 text-xs text-destructive focus:text-destructive"
-                onSelect={() => void handleDelete(entry)}
-              >
-                <Trash2 className="size-3.5" />
-                {t('fileExplorer.delete')}
-              </ContextMenuItem>
-            </ContextMenuContent>
-          </ContextMenu>
+                  {children.length > 0 && <SubFiles>{renderEntries(children)}</SubFiles>}
+                  {isLoadingMore && (
+                    <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
+                      <Loader2 className="size-3 animate-spin" />
+                      {t('fileExplorer.loadingMore')}
+                    </div>
+                  )}
+                  {!isLoadingMore && hasMore && (
+                    <div className="px-2 py-1">
+                      <button
+                        className="pointer-events-auto text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => handleLoadMore(entry.path)}
+                      >
+                        {t('fileExplorer.loadMore')}
+                      </button>
+                    </div>
+                  )}
+                  {error && children.length > 0 && (
+                    <div className="px-2 py-1 text-xs text-muted-foreground">
+                      {t('fileExplorer.error')}
+                    </div>
+                  )}
+                </>
+              )}
+            </FolderContent>
+          </FolderItem>
         )
-      })
-    },
-    [
-      entriesByPath,
-      errorsByPath,
-      expandedDirs,
-      handleDelete,
-      handleLoadMore,
-      handleNewFile,
-      handleNewFolder,
-      handleNewItemConfirm,
-      handleRefreshDir,
-      handleRenameConfirm,
-      handleSelectPath,
-      loadingByPath,
-      newItemParent,
-      newItemType,
-      openFileTab,
-      pageInfoByPath,
-      ensureExpanded,
-      renamingPath,
-      t
-    ]
-  )
+      }
+
+      const isRenaming = renamingPath === entry.path
+      return (
+        <ContextMenu key={entry.path}>
+          <ContextMenuTrigger asChild>
+            <div
+              className="w-full"
+              onClick={() => {
+                handleSelectPath(entry.path)
+                if (!isRenaming) openFileTab(entry)
+              }}
+            >
+              <FileItem icon={getFileIconComponent(entry.name)} className="text-sm">
+                {isRenaming ? (
+                  <input
+                    autoFocus
+                    className="pointer-events-auto w-full min-w-[120px] rounded border border-border bg-muted/60 px-2 py-0.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring"
+                    defaultValue={entry.name}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const val = (e.target as HTMLInputElement).value.trim()
+                        if (val) void handleRenameConfirm(entry, val)
+                        else setRenamingPath(null)
+                      }
+                      if (e.key === 'Escape') setRenamingPath(null)
+                    }}
+                    onBlur={() => setRenamingPath(null)}
+                  />
+                ) : (
+                  entry.name
+                )}
+              </FileItem>
+            </div>
+          </ContextMenuTrigger>
+          <ContextMenuContent className="w-44">
+            <ContextMenuItem
+              className="gap-2 text-xs"
+              onSelect={() => {
+                handleSelectPath(entry.path)
+                openFileTab(entry)
+              }}
+            >
+              <FileText className="size-3.5" />
+              {t('fileExplorer.open')}
+            </ContextMenuItem>
+            <ContextMenuItem
+              className="gap-2 text-xs"
+              onSelect={() => void handleDownloadFile(entry)}
+            >
+              <Download className="size-3.5" />
+              {t('fileExplorer.download')}
+            </ContextMenuItem>
+            <ContextMenuItem
+              className="gap-2 text-xs"
+              onSelect={() => {
+                setRenamingPath(entry.path)
+                setNewItemParent(null)
+              }}
+            >
+              <Pencil className="size-3.5" />
+              {t('fileExplorer.rename')}
+            </ContextMenuItem>
+            <ContextMenuItem
+              className="gap-2 text-xs"
+              onSelect={() => navigator.clipboard.writeText(entry.path)}
+            >
+              <Copy className="size-3.5" />
+              {t('fileExplorer.copyPath')}
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              className="gap-2 text-xs text-destructive focus:text-destructive"
+              onSelect={() => void handleDelete(entry)}
+            >
+              <Trash2 className="size-3.5" />
+              {t('fileExplorer.delete')}
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      )
+    })
+  }
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">

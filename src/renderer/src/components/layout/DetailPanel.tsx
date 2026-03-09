@@ -26,7 +26,6 @@ import { cn } from '@renderer/lib/utils'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AnimatePresence, motion } from 'motion/react'
-import { useShallow } from 'zustand/react/shallow'
 import { FadeIn } from '@renderer/components/animate-ui'
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -333,14 +332,13 @@ function SubAgentDetailView({
   inlineText?: string
 }): React.JSX.Element {
   const { t } = useTranslation('layout')
-  const { currentAgents, subAgentHistory } = useAgentStore(
-    useShallow((s) => ({
-      currentAgents: [
-        ...Object.values(s.activeSubAgents),
-        ...Object.values(s.completedSubAgents)
-      ] as SubAgentState[],
-      subAgentHistory: s.subAgentHistory
-    }))
+  const activeSubAgents = useAgentStore((s) => s.activeSubAgents)
+  const completedSubAgents = useAgentStore((s) => s.completedSubAgents)
+  const subAgentHistory = useAgentStore((s) => s.subAgentHistory)
+  const currentAgents = React.useMemo(
+    () =>
+      [...Object.values(activeSubAgents), ...Object.values(completedSubAgents)] as SubAgentState[],
+    [activeSubAgents, completedSubAgents]
   )
 
   // Accordion: only one item open at a time across all lists

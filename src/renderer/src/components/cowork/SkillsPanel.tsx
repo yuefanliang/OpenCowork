@@ -1,3 +1,4 @@
+import * as React from 'react'
 import { Sparkles, FolderOpen, Search, Terminal, ListChecks, Brain, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@renderer/components/ui/badge'
@@ -43,8 +44,16 @@ function groupTools(
 
 export function SkillsPanel(): React.JSX.Element {
   const { t } = useTranslation('cowork')
-  const allTools = toolRegistry.getDefinitions()
-  const subAgents = subAgentRegistry.getAll()
+  const allTools = React.useSyncExternalStore(
+    toolRegistry.subscribe.bind(toolRegistry),
+    () => toolRegistry.getDefinitions(),
+    () => toolRegistry.getDefinitions()
+  )
+  const subAgents = React.useSyncExternalStore(
+    subAgentRegistry.subscribe.bind(subAgentRegistry),
+    () => subAgentRegistry.getAll(),
+    () => subAgentRegistry.getAll()
+  )
   const teamToolsEnabled = useSettingsStore((s) => s.teamToolsEnabled)
 
   // Regular tools only (exclude Task and Team tools from the main list)

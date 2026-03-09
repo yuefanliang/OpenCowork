@@ -795,6 +795,10 @@ function TaskListOutputBlock({ output }: { output: string }): React.JSX.Element 
   )
 }
 
+function lineCount(text: string): number {
+  return text.length === 0 ? 0 : text.split('\n').length
+}
+
 function detectLang(filePath: string): string {
   const ext = filePath.includes('.') ? (filePath.split('.').pop()?.toLowerCase() ?? '') : ''
   const map: Record<string, string> = {
@@ -1091,6 +1095,87 @@ function StructuredInput({
         )}
       </div>
     )
+  }
+
+  // Edit: lightweight preview until the diff is ready to render
+  if (name === 'Edit') {
+    const filePath = String(input.file_path ?? input.path ?? '')
+    const explanation = input.explanation ? String(input.explanation) : null
+    const oldStr = typeof input.old_string === 'string' ? input.old_string : ''
+    const newStr = typeof input.new_string === 'string' ? input.new_string : ''
+    const hasCounts = oldStr.length > 0 || newStr.length > 0
+
+    return (
+      <div className="space-y-0.5">
+        {filePath && (
+          <div className="flex items-center gap-1.5 text-xs">
+            <FileCode className="size-3 text-amber-400" />
+            <span className="font-mono text-[11px] break-all" style={{ fontFamily: MONO_FONT }}>
+              {filePath}
+            </span>
+          </div>
+        )}
+        {explanation && (
+          <p className="pl-[18px] text-[11px] text-muted-foreground/60">{explanation}</p>
+        )}
+        {hasCounts && (
+          <div className="pl-[18px] text-[10px] text-muted-foreground/40">
+            -{lineCount(oldStr)} / +{lineCount(newStr)} lines
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Write: lightweight preview while content is still streaming/running
+  if (name === 'Write') {
+    const filePath = String(input.file_path ?? input.path ?? '')
+    const content = typeof input.content === 'string' ? input.content : null
+    const preview = typeof input.content_preview === 'string' ? input.content_preview : null
+    const lineTotal =
+      typeof input.content_lines === 'number'
+        ? input.content_lines
+        : content !== null
+          ? lineCount(content)
+          : null
+    const charTotal =
+      typeof input.content_chars === 'number'
+        ? input.content_chars
+        : content !== null
+          ? content.length
+          : null
+    const visiblePreview = content ?? preview
+
+    if (!content) {
+      return (
+        <div className="space-y-1">
+          {filePath && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <FileCode className="size-3 text-green-400" />
+              <span className="font-mono text-[11px] break-all" style={{ fontFamily: MONO_FONT }}>
+                {filePath}
+              </span>
+            </div>
+          )}
+          {(lineTotal !== null || charTotal !== null) && (
+            <div className="pl-[18px] text-[10px] text-muted-foreground/40">
+              {lineTotal !== null ? `${lineTotal} lines` : ''}
+              {lineTotal !== null && charTotal !== null ? ' · ' : ''}
+              {charTotal !== null ? `${charTotal} chars` : ''}
+            </div>
+          )}
+          {visiblePreview && (
+            <pre
+              className="rounded-md border bg-zinc-950 px-2.5 py-2 text-[11px] text-zinc-300/80 overflow-auto max-h-36 whitespace-pre-wrap break-words"
+              style={{ fontFamily: MONO_FONT }}
+            >
+              {visiblePreview}
+              {input.content_truncated ? '\n…' : ''}
+            </pre>
+          )}
+        </div>
+      )
+    }
   }
 
   // LS: path
@@ -1413,6 +1498,14 @@ export function ToolCallCard({
   }, [shouldAutoExpand])
 
   const summary = inputSummary(name, input)
+  const showSettledEditDiff =
+    name === 'Edit' &&
+    status !== 'streaming' &&
+    status !== 'running' &&
+    !!input.old_string &&
+    !!input.new_string
+  const showSettledWriteContent =
+    name === 'Write' && status !== 'streaming' && status !== 'running' && !!input.content
   const elapsed =
     startedAt && completedAt ? ((completedAt - startedAt) / 1000).toFixed(1) + 's' : null
 
@@ -1434,8 +1527,17 @@ export function ToolCallCard({
                   .split(/[\\/]/)
                   .slice(-2)
                   .join('/')}
-                {typeof input.content === 'string' &&
-                  ` (${input.content.split('\n').length} lines)`}
+                {((typeof input.content === 'string' && lineCount(input.content)) ||
+                  (typeof input.content_lines === 'number' && input.content_lines)) &&
+                  ` (${typeof input.content_lines === 'number' ? input.content_lines : lineCount(String(input.content ?? ''))} lines)`}
+              </span>
+            ) : name === 'Edit' && (input.file_path || input.path) ? (
+              <span className="text-amber-400/70 text-[10px] animate-pulse">
+                编辑:{' '}
+                {String(input.file_path || input.path)
+                  .split(/[\\/]/)
+                  .slice(-2)
+                  .join('/')}
               </span>
             ) : (
               <span className="text-violet-400/70 text-[10px] animate-pulse">
@@ -1465,18 +1567,17 @@ export function ToolCallCard({
       {open && (
         <div className="mt-1.5 space-y-2 pl-5 min-w-0 overflow-hidden">
           {/* Diff view for Edit tool */}
-          {name === 'Edit' && !!input.old_string && !!input.new_string && (
+          {showSettledEditDiff && (
             <InlineDiff oldStr={String(input.old_string)} newStr={String(input.new_string)} />
           )}
           {/* Write: show content with syntax highlighting */}
-          {name === 'Write' && !!input.content && (
+          {showSettledWriteContent && (
             <div>
               <div className="mb-1 flex items-center gap-1.5">
                 <p className="text-xs font-medium text-muted-foreground">{t('toolCall.content')}</p>
                 <span className="text-[9px] text-muted-foreground/40 font-mono">
                   {detectLang(String(input.file_path ?? input.path ?? ''))} ·{' '}
                   {typeof input.content === 'string' ? input.content.split('\n').length : '?'} lines
-                  {status === 'streaming' && ' (streaming...)'}
                 </span>
                 <CopyBtn text={String(input.content)} />
               </div>
@@ -1502,8 +1603,8 @@ export function ToolCallCard({
           {name === 'TaskCreate' && !!input.subject && <TaskCreateInputBlock input={input} />}
           {/* Structured Input — tool-specific rendering */}
           {!(
-            (name === 'Edit' && !!input.old_string) ||
-            (name === 'Write' && !!input.content) ||
+            showSettledEditDiff ||
+            showSettledWriteContent ||
             (name === 'TaskCreate' && !!input.subject)
           ) && <StructuredInput name={name} input={input} />}
           {/* Output — tool-specific rendering */}

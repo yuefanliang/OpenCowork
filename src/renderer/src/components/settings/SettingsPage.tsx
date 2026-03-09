@@ -695,6 +695,60 @@ function GeneralPanel(): React.JSX.Element {
 
       <Separator />
 
+      {/* Editor Workspace */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between max-w-lg">
+          <div>
+            <label className="text-sm font-medium">{t('general.editorWorkspace')}</label>
+            <p className="text-xs text-muted-foreground">{t('general.editorWorkspaceDesc')}</p>
+          </div>
+          <Switch
+            checked={settings.editorWorkspaceEnabled}
+            onCheckedChange={(checked) =>
+              settings.updateSettings({
+                editorWorkspaceEnabled: checked,
+                editorRemoteLanguageServiceEnabled: checked
+                  ? settings.editorRemoteLanguageServiceEnabled
+                  : false
+              })
+            }
+          />
+        </div>
+        {settings.editorWorkspaceEnabled && (
+          <p className="text-xs text-muted-foreground/70">{t('general.editorWorkspaceEnabled')}</p>
+        )}
+      </section>
+
+      <Separator />
+
+      {/* Remote Language Service */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between max-w-lg">
+          <div>
+            <label className="text-sm font-medium">
+              {t('general.editorRemoteLanguageService')}
+            </label>
+            <p className="text-xs text-muted-foreground">
+              {t('general.editorRemoteLanguageServiceDesc')}
+            </p>
+          </div>
+          <Switch
+            checked={settings.editorRemoteLanguageServiceEnabled}
+            disabled={!settings.editorWorkspaceEnabled}
+            onCheckedChange={(checked) =>
+              settings.updateSettings({ editorRemoteLanguageServiceEnabled: checked })
+            }
+          />
+        </div>
+        {settings.editorRemoteLanguageServiceEnabled && settings.editorWorkspaceEnabled && (
+          <p className="text-xs text-muted-foreground/70">
+            {t('general.editorRemoteLanguageServiceEnabled')}
+          </p>
+        )}
+      </section>
+
+      <Separator />
+
       {/* Auto Approve */}
       <section className="space-y-3">
         <div className="flex items-center justify-between max-w-lg">

@@ -7,13 +7,40 @@ import type { ToolHandler, ToolContext } from '../tools/tool-types'
  */
 class ToolRegistry {
   private tools = new Map<string, ToolHandler>()
+  private listeners = new Set<() => void>()
+  private definitionsCache: ToolDefinition[] | null = []
+  private namesCache: string[] | null = []
+
+  private invalidate(): void {
+    this.definitionsCache = null
+    this.namesCache = null
+  }
+
+  private emit(): void {
+    for (const listener of this.listeners) {
+      listener()
+    }
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
 
   register(handler: ToolHandler): void {
+    const prev = this.tools.get(handler.definition.name)
     this.tools.set(handler.definition.name, handler)
+    if (prev !== handler) {
+      this.invalidate()
+      this.emit()
+    }
   }
 
   unregister(name: string): void {
-    this.tools.delete(name)
+    if (this.tools.delete(name)) {
+      this.invalidate()
+      this.emit()
+    }
   }
 
   get(name: string): ToolHandler | undefined {
@@ -25,11 +52,17 @@ class ToolRegistry {
   }
 
   getDefinitions(): ToolDefinition[] {
-    return Array.from(this.tools.values()).map((t) => t.definition)
+    if (!this.definitionsCache) {
+      this.definitionsCache = Array.from(this.tools.values()).map((t) => t.definition)
+    }
+    return this.definitionsCache
   }
 
   getNames(): string[] {
-    return Array.from(this.tools.keys())
+    if (!this.namesCache) {
+      this.namesCache = Array.from(this.tools.keys())
+    }
+    return this.namesCache
   }
 
   async execute(

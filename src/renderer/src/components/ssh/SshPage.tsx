@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react'
+import { useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Monitor,
@@ -49,9 +49,6 @@ export function SshPage(): React.JSX.Element {
   const activeUploadCount = uploadTaskList.filter(
     (t) => t.stage !== 'done' && t.stage !== 'error' && t.stage !== 'canceled'
   ).length
-
-  // Track which tabs have been mounted (for keep-alive)
-  const mountedTabsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     if (!_loaded) void loadAll()
@@ -153,7 +150,6 @@ export function SshPage(): React.JSX.Element {
   )
 
   const handleCloseTab = useCallback((tabId: string) => {
-    mountedTabsRef.current.delete(tabId)
     useSshStore.getState().closeTab(tabId)
   }, [])
 
@@ -221,11 +217,6 @@ export function SshPage(): React.JSX.Element {
       null)
     : null
   const showTerminalView = openTabs.length > 0 && activeTabId
-
-  // Track mounted tabs
-  for (const tab of openTabs) {
-    mountedTabsRef.current.add(tab.id)
-  }
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
@@ -485,7 +476,11 @@ export function SshPage(): React.JSX.Element {
                 >
                   {tab.type === 'file' ? (
                     tab.filePath ? (
-                      <SshFileEditor connectionId={tab.connectionId} filePath={tab.filePath} />
+                      <SshFileEditor
+                        connectionId={tab.connectionId}
+                        filePath={tab.filePath}
+                        sessionId={tab.sessionId ?? undefined}
+                      />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center bg-background text-muted-foreground text-xs">
                         {t('fileExplorer.error')}

@@ -26,6 +26,8 @@ interface SettingsStore {
   reasoningEffort: ReasoningEffortLevel
   teamToolsEnabled: boolean
   contextCompressionEnabled: boolean
+  editorWorkspaceEnabled: boolean
+  editorRemoteLanguageServiceEnabled: boolean
   userName: string
   userAvatar: string
 
@@ -78,6 +80,8 @@ export const useSettingsStore = create<SettingsStore>()(
       reasoningEffort: 'medium',
       teamToolsEnabled: false,
       contextCompressionEnabled: true,
+      editorWorkspaceEnabled: false,
+      editorRemoteLanguageServiceEnabled: false,
       userName: '',
       userAvatar: '',
 
@@ -102,7 +106,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'opencowork-settings',
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => ipcStorage),
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>
@@ -133,6 +137,12 @@ export const useSettingsStore = create<SettingsStore>()(
         if (state.fontSize === undefined || typeof state.fontSize !== 'number') {
           state.fontSize = 16
         }
+        if (state.editorWorkspaceEnabled === undefined) {
+          state.editorWorkspaceEnabled = false
+        }
+        if (state.editorRemoteLanguageServiceEnabled === undefined) {
+          state.editorRemoteLanguageServiceEnabled = false
+        }
         return state as unknown as SettingsStore
       },
       partialize: (state) => ({
@@ -152,6 +162,8 @@ export const useSettingsStore = create<SettingsStore>()(
         reasoningEffort: state.reasoningEffort,
         teamToolsEnabled: state.teamToolsEnabled,
         contextCompressionEnabled: state.contextCompressionEnabled,
+        editorWorkspaceEnabled: state.editorWorkspaceEnabled,
+        editorRemoteLanguageServiceEnabled: state.editorRemoteLanguageServiceEnabled,
         userName: state.userName,
         userAvatar: state.userAvatar,
         // Appearance Settings

@@ -18,6 +18,24 @@ interface MessageItemProps {
   toolResults?: Map<string, { content: ToolResultContent; isError?: boolean }>
 }
 
+function getToolUseInputSignal(input: Record<string, unknown>): string {
+  const entries = Object.entries(input)
+  if (entries.length === 0) return '0'
+
+  return entries
+    .map(([key, value]) => {
+      if (typeof value === 'string') return `${key}:s:${value.length}:${value.slice(-24)}`
+      if (typeof value === 'number') return `${key}:n:${value}`
+      if (typeof value === 'boolean') return `${key}:b:${value ? 1 : 0}`
+      if (Array.isArray(value)) return `${key}:a:${value.length}`
+      if (value && typeof value === 'object') {
+        return `${key}:o:${Object.keys(value as Record<string, unknown>).length}`
+      }
+      return `${key}:${typeof value}`
+    })
+    .join('|')
+}
+
 function getContentSignal(content: UnifiedMessage['content']): string {
   if (typeof content === 'string') return `s:${content.length}:${content.slice(-32)}`
   const last = content[content.length - 1]
@@ -28,7 +46,7 @@ function getContentSignal(content: UnifiedMessage['content']): string {
     return `a:${content.length}:h:${last.thinking.length}:${last.completedAt ?? 0}`
   }
   if (last.type === 'tool_use') {
-    return `a:${content.length}:u:${last.id}:${JSON.stringify(last.input).length}`
+    return `a:${content.length}:u:${last.id}:${getToolUseInputSignal(last.input)}`
   }
   if (last.type === 'tool_result') {
     return `a:${content.length}:r:${last.toolUseId}:${typeof last.content === 'string' ? last.content.length : last.content.length}`

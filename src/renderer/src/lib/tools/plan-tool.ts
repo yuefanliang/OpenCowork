@@ -11,9 +11,15 @@ function getSessionId(ctx: ToolContext): string | null {
 }
 
 function inferTitleFromContent(content: string): string {
-  const lines = content.split('\n').map((line) => line.trim()).filter(Boolean)
+  const lines = content
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
   if (lines.length === 0) return 'Plan'
-  const first = lines[0].replace(/^#+\s*/, '').replace(/^plan:\s*/i, '').trim()
+  const first = lines[0]
+    .replace(/^#+\s*/, '')
+    .replace(/^plan:\s*/i, '')
+    .trim()
   return first.slice(0, 80) || 'Plan'
 }
 
@@ -32,25 +38,34 @@ const enterPlanModeHandler: ToolHandler = {
       properties: {
         reason: {
           type: 'string',
-          description: 'Brief reason in English for entering plan mode. This becomes the plan title if no plan exists (e.g. "add-user-authentication").',
-        },
-      },
-    },
+          description:
+            'Brief reason in English for entering plan mode. This becomes the plan title if no plan exists (e.g. "add-user-authentication").'
+        }
+      }
+    }
   },
-  execute: async (input) => {
+  execute: async (input, ctx) => {
     const uiStore = useUIStore.getState()
-    const session = useChatStore.getState().getActiveSession()
+    const sessionId = getSessionId(ctx)
+    const session = sessionId
+      ? useChatStore.getState().sessions.find((item) => item.id === sessionId)
+      : undefined
     if (!session) return JSON.stringify({ error: 'No active session.' })
 
     // Check if session already has a plan
     const existingPlan = usePlanStore.getState().getPlanBySession(session.id)
-    if (existingPlan && (existingPlan.status === 'drafting' || existingPlan.status === 'rejected')) {
-      if (!uiStore.planMode) uiStore.enterPlanMode()
-      usePlanStore.getState().setActivePlan(existingPlan.id)
+    if (
+      existingPlan &&
+      (existingPlan.status === 'drafting' || existingPlan.status === 'rejected')
+    ) {
+      if (!uiStore.isPlanModeEnabled(session.id)) uiStore.enterPlanMode(session.id)
+      if (useChatStore.getState().activeSessionId === session.id) {
+        usePlanStore.getState().setActivePlan(existingPlan.id)
+      }
       return JSON.stringify({
         status: 'resumed',
         plan_id: existingPlan.id,
-        message: 'Resumed existing plan draft. Draft the plan in chat, then call SavePlan.',
+        message: 'Resumed existing plan draft. Draft the plan in chat, then call SavePlan.'
       })
     }
 
@@ -58,17 +73,20 @@ const enterPlanModeHandler: ToolHandler = {
     const reason = input.reason ? String(input.reason) : 'Implementation planning'
     const plan = usePlanStore.getState().createPlan(session.id, reason)
 
-    if (!uiStore.planMode) uiStore.enterPlanMode()
-    uiStore.setRightPanelTab('plan')
-    uiStore.setRightPanelOpen(true)
+    if (!uiStore.isPlanModeEnabled(session.id)) uiStore.enterPlanMode(session.id)
+    if (useChatStore.getState().activeSessionId === session.id) {
+      uiStore.setRightPanelTab('plan')
+      uiStore.setRightPanelOpen(true)
+    }
 
     return JSON.stringify({
       status: 'entered',
       plan_id: plan.id,
-      message: 'Plan mode activated. Draft the plan in chat, then call SavePlan. Call ExitPlanMode when complete.',
+      message:
+        'Plan mode activated. Draft the plan in chat, then call SavePlan. Call ExitPlanMode when complete.'
     })
   },
-  requiresApproval: () => false,
+  requiresApproval: () => false
 }
 
 // ── ExitPlanMode ──
@@ -83,25 +101,30 @@ const exitPlanModeHandler: ToolHandler = {
       'After calling this tool, you MUST STOP and wait for the user to review the plan — do NOT continue with any further actions.',
     inputSchema: {
       type: 'object',
-      properties: {},
-    },
+      properties: {}
+    }
   },
-  execute: async () => {
+  execute: async (_input, ctx) => {
     const uiStore = useUIStore.getState()
+    const sessionId = getSessionId(ctx)
 
-    if (!uiStore.planMode) {
-      return JSON.stringify({ status: 'not_in_plan_mode', message: 'You are not currently in plan mode.' })
+    if (!uiStore.isPlanModeEnabled(sessionId)) {
+      return JSON.stringify({
+        status: 'not_in_plan_mode',
+        message: 'You are not currently in plan mode.'
+      })
     }
 
     // Exit plan mode UI
-    uiStore.exitPlanMode()
+    uiStore.exitPlanMode(sessionId)
 
     return JSON.stringify({
       status: 'exited',
-      message: 'Plan mode exited. STOP HERE — wait for the user to review and approve the plan in the panel.',
+      message:
+        'Plan mode exited. STOP HERE — wait for the user to review and approve the plan in the panel.'
     })
   },
-  requiresApproval: () => false,
+  requiresApproval: () => false
 }
 
 // ── SavePlan ──
@@ -117,15 +140,17 @@ const savePlanHandler: ToolHandler = {
       properties: {
         title: {
           type: 'string',
-          description: 'Optional plan title. If omitted, the title is inferred from the plan content.',
+          description:
+            'Optional plan title. If omitted, the title is inferred from the plan content.'
         },
         content: {
           type: 'string',
-          description: 'Full plan content as written in the chat response. This will be displayed in the Plan panel.',
-        },
+          description:
+            'Full plan content as written in the chat response. This will be displayed in the Plan panel.'
+        }
       },
-      required: ['content'],
-    },
+      required: ['content']
+    }
   },
   execute: async (input, ctx) => {
     const sessionId = getSessionId(ctx)
@@ -147,15 +172,17 @@ const savePlanHandler: ToolHandler = {
     } else {
       planStore.updatePlan(plan.id, { title, content, status: 'drafting' })
     }
-    planStore.setActivePlan(plan.id)
+    if (useChatStore.getState().activeSessionId === sessionId) {
+      planStore.setActivePlan(plan.id)
+    }
 
     return JSON.stringify({
       status: 'saved',
       plan_id: plan.id,
-      title,
+      title
     })
   },
-  requiresApproval: () => false,
+  requiresApproval: () => false
 }
 
 // ── Registration ──
@@ -188,5 +215,5 @@ export const PLAN_MODE_ALLOWED_TOOLS = new Set([
   // SubAgent (read-only explorers)
   'Task',
   // Preview (read-only)
-  'Preview',
+  'OpenPreview'
 ])

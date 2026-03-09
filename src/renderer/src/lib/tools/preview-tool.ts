@@ -24,16 +24,17 @@ const openPreviewHandler: ToolHandler = {
       properties: {
         file_path: {
           type: 'string',
-          description: 'Absolute path to the file to preview. Must be an existing file on disk.',
+          description: 'Absolute path to the file to preview. Must be an existing file on disk.'
         },
         view_mode: {
           type: 'string',
           enum: ['preview', 'code'],
-          description: 'View mode: "preview" for rendered HTML view, "code" for source code with syntax highlighting. Defaults based on file type (HTML→preview, others→code).',
-        },
+          description:
+            'View mode: "preview" for rendered HTML view, "code" for source code with syntax highlighting. Defaults based on file type (HTML→preview, others→code).'
+        }
       },
-      required: ['file_path'],
-    },
+      required: ['file_path']
+    }
   },
   execute: async (input, ctx) => {
     const filePath = String(input.file_path)
@@ -42,11 +43,11 @@ const openPreviewHandler: ToolHandler = {
 
     // Import dynamically to avoid circular deps at module level
     const { useUIStore } = await import('@renderer/stores/ui-store')
-    useUIStore.getState().openFilePreview(filePath, viewMode, sshConnectionId)
+    useUIStore.getState().openFilePreview(filePath, viewMode, sshConnectionId, ctx.sessionId)
 
     return JSON.stringify({ success: true, message: `Opened ${filePath} in preview panel` })
   },
-  requiresApproval: () => false,
+  requiresApproval: () => false
 }
 
 export function registerPreviewTools(): void {

@@ -90,6 +90,10 @@ function fileName(filePath: string): string {
   return parts[parts.length - 1] || filePath
 }
 
+function lineCount(text: string): number {
+  return text.length === 0 ? 0 : text.split('\n').length
+}
+
 type DiffLine = { type: 'keep' | 'add' | 'del'; text: string; oldNum?: number; newNum?: number }
 
 function computeDiff(oldStr: string, newStr: string): DiffLine[] {
@@ -229,10 +233,16 @@ function ChangeStats({
   trackedChange?: AgentRunFileChange
 }): React.JSX.Element | null {
   const { t } = useTranslation('chat')
+  const trackedStats = React.useMemo(() => {
+    if (!trackedChange || trackedChange.op === 'create') return null
+    return summarizeDiff(
+      computeDiff(trackedChange.before.text ?? '', trackedChange.after.text ?? '')
+    )
+  }, [trackedChange])
 
   if (trackedChange) {
     if (trackedChange.op === 'create') {
-      const lines = (trackedChange.after.text ?? '').split('\n').length
+      const lines = lineCount(trackedChange.after.text ?? '')
       return (
         <span className="flex items-center gap-1.5 text-[10px]">
           <span className="rounded bg-green-500/15 px-1.5 py-0.5 text-green-500 font-medium">
@@ -243,20 +253,18 @@ function ChangeStats({
       )
     }
 
-    const stats = summarizeDiff(
-      computeDiff(trackedChange.before.text ?? '', trackedChange.after.text ?? '')
-    )
+    if (!trackedStats) return null
     return (
       <span className="flex items-center gap-1 text-[10px]">
-        <span className="text-green-400/70">+{stats.added}</span>
-        <span className="text-red-400/70">-{stats.deleted}</span>
+        <span className="text-green-400/70">+{trackedStats.added}</span>
+        <span className="text-red-400/70">-{trackedStats.deleted}</span>
       </span>
     )
   }
 
   if (name === 'Write') {
-    const content = String(input.content ?? '')
-    const lines = content.split('\n').length
+    const content = typeof input.content === 'string' ? input.content : ''
+    const lines = lineCount(content)
     return (
       <span className="flex items-center gap-1.5 text-[10px]">
         <span className="rounded bg-green-500/15 px-1.5 py-0.5 text-green-500 font-medium">
@@ -267,10 +275,11 @@ function ChangeStats({
     )
   }
   if (name === 'Edit') {
-    const oldStr = String(input.old_string ?? '')
-    const newStr = String(input.new_string ?? '')
-    const removed = oldStr.split('\n').length
-    const added = newStr.split('\n').length
+    const oldStr = typeof input.old_string === 'string' ? input.old_string : ''
+    const newStr = typeof input.new_string === 'string' ? input.new_string : ''
+    if (!oldStr && !newStr) return null
+    const removed = lineCount(oldStr)
+    const added = lineCount(newStr)
     return (
       <span className="flex items-center gap-1 text-[10px]">
         <span className="text-green-400/70">+{added}</span>
@@ -422,6 +431,81 @@ function NewFileContent({
         >
           {t('fileChange.moreLines', { count: lines - 50 })}
         </button>
+      )}
+    </div>
+  )
+}
+
+function PendingEditPreview({ input }: { input: Record<string, unknown> }): React.JSX.Element {
+  const filePath = String(input.file_path ?? input.path ?? '')
+  const explanation = input.explanation ? String(input.explanation) : null
+  const oldStr = typeof input.old_string === 'string' ? input.old_string : ''
+  const newStr = typeof input.new_string === 'string' ? input.new_string : ''
+  const hasCounts = oldStr.length > 0 || newStr.length > 0
+
+  return (
+    <div className="px-3 py-2 space-y-1.5 text-[11px] text-muted-foreground/70">
+      <div className="flex flex-wrap items-center gap-2">
+        {filePath && (
+          <span
+            className="font-mono text-[10px] text-muted-foreground/50"
+            style={{ fontFamily: MONO_FONT }}
+          >
+            {shortPath(filePath)}
+          </span>
+        )}
+        {hasCounts && (
+          <span className="text-[10px] text-muted-foreground/50">
+            -{lineCount(oldStr)} / +{lineCount(newStr)} lines
+          </span>
+        )}
+      </div>
+      {explanation && <p className="text-[11px] text-muted-foreground/60">{explanation}</p>}
+    </div>
+  )
+}
+
+function PendingWritePreview({
+  input,
+  isStreaming
+}: {
+  input: Record<string, unknown>
+  isStreaming: boolean
+}): React.JSX.Element {
+  const content = typeof input.content === 'string' ? input.content : null
+  const preview = typeof input.content_preview === 'string' ? input.content_preview : null
+  const lineTotal =
+    typeof input.content_lines === 'number'
+      ? input.content_lines
+      : content !== null
+        ? lineCount(content)
+        : null
+  const charTotal =
+    typeof input.content_chars === 'number'
+      ? input.content_chars
+      : content !== null
+        ? content.length
+        : null
+  const visiblePreview = content ?? preview
+
+  return (
+    <div className="px-3 py-2 space-y-2">
+      {(lineTotal !== null || charTotal !== null) && (
+        <div className="text-[10px] text-muted-foreground/50">
+          {lineTotal !== null ? `${lineTotal} lines` : ''}
+          {lineTotal !== null && charTotal !== null ? ' · ' : ''}
+          {charTotal !== null ? `${charTotal} chars` : ''}
+          {isStreaming ? ' · streaming' : ''}
+        </div>
+      )}
+      {visiblePreview && (
+        <pre
+          className="rounded-md border bg-zinc-950 px-2.5 py-2 text-[11px] text-zinc-300/80 overflow-auto whitespace-pre-wrap break-words"
+          style={{ fontFamily: MONO_FONT, maxHeight: isStreaming ? '240px' : '180px' }}
+        >
+          {visiblePreview}
+          {input.content_truncated ? '\n…' : ''}
+        </pre>
       )}
     </div>
   )
@@ -579,16 +663,24 @@ export function FileChangeCard({
             transition={{ duration: 0.2 }}
             className="border-t border-inherit bg-zinc-950 overflow-hidden"
           >
-            {/* Edit: single diff */}
+            {/* Edit: delay diff rendering until the tool settles */}
             {name === 'Edit' && trackedChange && (
               <InlineDiff
                 oldStr={trackedChange.before.text ?? ''}
                 newStr={trackedChange.after.text ?? ''}
               />
             )}
-            {name === 'Edit' && !trackedChange && !!input.old_string && !!input.new_string && (
-              <InlineDiff oldStr={String(input.old_string)} newStr={String(input.new_string)} />
+            {name === 'Edit' && !trackedChange && status !== 'completed' && status !== 'error' && (
+              <PendingEditPreview input={input} />
             )}
+            {name === 'Edit' &&
+              !trackedChange &&
+              status !== 'streaming' &&
+              status !== 'running' &&
+              !!input.old_string &&
+              !!input.new_string && (
+                <InlineDiff oldStr={String(input.old_string)} newStr={String(input.new_string)} />
+              )}
 
             {/* Write: new file content or overwrite diff */}
             {name === 'Write' && trackedChange?.op === 'modify' && (
@@ -604,13 +696,22 @@ export function FileChangeCard({
                 isStreaming={status === 'streaming'}
               />
             )}
-            {name === 'Write' && !trackedChange && !!input.content && (
-              <NewFileContent
-                content={String(input.content)}
-                filePath={filePath}
-                isStreaming={status === 'streaming'}
-              />
-            )}
+            {name === 'Write' &&
+              !trackedChange &&
+              (status === 'streaming' || status === 'running') && (
+                <PendingWritePreview input={input} isStreaming={status === 'streaming'} />
+              )}
+            {name === 'Write' &&
+              !trackedChange &&
+              status !== 'streaming' &&
+              status !== 'running' &&
+              !!input.content && (
+                <NewFileContent
+                  content={String(input.content)}
+                  filePath={filePath}
+                  isStreaming={false}
+                />
+              )}
 
             {/* Delete: minimal indicator */}
             {name === 'Delete' && (
