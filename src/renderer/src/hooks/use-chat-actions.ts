@@ -2069,7 +2069,6 @@ export function sendImplementPlan(planId: string): void {
     session?.mode === 'clarify' ||
     (chatStore.activeSessionId === plan.sessionId && uiStore.mode === 'clarify')
 
-  // 1. Approve + mark plan as implementing
   usePlanStore.getState().approvePlan(planId)
   usePlanStore.getState().startImplementing(planId)
 
@@ -2080,11 +2079,12 @@ export function sendImplementPlan(planId: string): void {
     }
   }
 
-  // 2. Exit plan mode
   uiStore.exitPlanMode(plan.sessionId)
-
-  // 3. Switch to Steps tab
   uiStore.setRightPanelTab('steps')
+
+  if (chatStore.activeSessionId === plan.sessionId) {
+    uiStore.setRightPanelOpen(true)
+  }
 
   _sendMessageFn(`Execute the plan`)
 }

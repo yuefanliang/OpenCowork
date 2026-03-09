@@ -97,12 +97,10 @@ function selectModel(
 /** Settings popover shown next to model icon */
 function ModelSettingsPopover({
   model,
-  provider,
   t,
   tChat
 }: {
   model: AIModelConfig | undefined
-  provider: AIProvider | undefined
   t: (key: string) => string
   tChat: (key: string, opts?: Record<string, unknown>) => string
 }): React.JSX.Element | null {
@@ -403,7 +401,7 @@ export function ModelSwitcher(): React.JSX.Element {
       </Popover>
 
       {/* Settings icon — model config popover */}
-      <ModelSettingsPopover model={activeModel} provider={activeProvider} t={t} tChat={tChat} />
+      <ModelSettingsPopover model={activeModel} t={t} tChat={tChat} />
     </div>
   )
 }
