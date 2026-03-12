@@ -525,7 +525,9 @@ export function registerApiProxyHandlers(): void {
     } = req
 
     try {
-      console.log(`[API Proxy] stream-request[${requestId}] ${method} ${url}`)
+      console.log(
+        `[API Proxy] stream-request[${requestId}] ${method} ${url} transport=${String(transport)}`
+      )
       if (transport === 'websocket') {
         void streamViaResponsesWebSocket(event, req).catch((err) => {
           console.error('[API Proxy] WebSocket stream error:', err)

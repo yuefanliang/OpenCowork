@@ -3,6 +3,15 @@
 All notable changes to **OpenCowork** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.5.6] - 2026-03-13
+
+### Changed
+- Desktop input handlers now lazy-load `@jitsi/robotjs` and gracefully degrade when unavailable (e.g. unsupported platforms).
+- OpenAI and Codex OAuth models now default to `preferResponsesWebSocket` for the Responses API.
+
+### Fixed
+- Fixed desktop click/type/scroll failing at startup when robotjs cannot be loaded on the current platform.
+
 ## [0.5.5] - 2026-03-12
 
 ### Added

@@ -199,6 +199,7 @@ export const openaiPreset: BuiltinProviderPreset = {
       responseSummary: 'detailed',
       enablePromptCache: true,
       enableSystemPromptCache: true,
+      preferResponsesWebSocket: true,
       type: 'openai-responses'
     },
     {
@@ -223,6 +224,7 @@ export const openaiPreset: BuiltinProviderPreset = {
       responseSummary: 'detailed',
       enablePromptCache: true,
       enableSystemPromptCache: true,
+      preferResponsesWebSocket: true,
       type: 'openai-responses'
     },
     {
@@ -247,6 +249,7 @@ export const openaiPreset: BuiltinProviderPreset = {
       responseSummary: 'detailed',
       enablePromptCache: true,
       enableSystemPromptCache: true,
+      preferResponsesWebSocket: true,
       type: 'openai-responses'
     },
     {
@@ -271,6 +274,7 @@ export const openaiPreset: BuiltinProviderPreset = {
       responseSummary: 'detailed',
       enablePromptCache: true,
       enableSystemPromptCache: true,
+      preferResponsesWebSocket: true,
       type: 'openai-responses'
     },
     {
@@ -295,6 +299,7 @@ export const openaiPreset: BuiltinProviderPreset = {
       responseSummary: 'detailed',
       enablePromptCache: true,
       enableSystemPromptCache: true,
+      preferResponsesWebSocket: true,
       type: 'openai-responses'
     },
     {
@@ -319,6 +324,7 @@ export const openaiPreset: BuiltinProviderPreset = {
       responseSummary: 'detailed',
       enablePromptCache: true,
       enableSystemPromptCache: true,
+      preferResponsesWebSocket: true,
       type: 'openai-responses'
     },
     {
@@ -342,6 +348,7 @@ export const openaiPreset: BuiltinProviderPreset = {
       },
       enablePromptCache: true,
       enableSystemPromptCache: true,
+      preferResponsesWebSocket: true,
       type: 'openai-responses'
     },
     {

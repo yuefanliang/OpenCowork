@@ -1,5 +1,5 @@
 import { ipcMain, screen } from 'electron'
-import * as robot from '@jitsi/robotjs'
+import { createRequire } from 'module'
 
 const DESKTOP_INPUT_CLICK = 'desktop:input:click'
 const DESKTOP_INPUT_TYPE = 'desktop:input:type'
@@ -55,6 +55,39 @@ interface ScrollArgs {
   scrollY?: number | null
 }
 
+const require = createRequire(import.meta.url)
+
+type RobotJsModule = typeof import('@jitsi/robotjs')
+
+let robotModule: RobotJsModule | null | undefined
+let robotLoadError: string | null = null
+
+function getRobot(): RobotJsModule | null {
+  if (robotModule !== undefined) {
+    return robotModule
+  }
+
+  try {
+    robotModule = require('@jitsi/robotjs') as RobotJsModule
+    robotLoadError = null
+  } catch (error) {
+    robotModule = null
+    robotLoadError = error instanceof Error ? error.message : String(error)
+    console.error('[InputHandlers] Failed to load @jitsi/robotjs:', error)
+  }
+
+  return robotModule
+}
+
+function getRobotUnavailableResult(): { success: false; error: string } {
+  const reason = robotLoadError ? ` ${robotLoadError}` : ''
+
+  return {
+    success: false,
+    error: `Desktop input is unavailable on this platform or build.${reason}`
+  }
+}
+
 function isPointInsideDesktop(x: number, y: number): boolean {
   const bounds = screen.getAllDisplays().reduce(
     (acc, display) => ({
@@ -71,6 +104,9 @@ function isPointInsideDesktop(x: number, y: number): boolean {
 export function registerInputHandlers(): void {
   ipcMain.handle(DESKTOP_INPUT_CLICK, (_event, args: ClickArgs) => {
     try {
+      const robot = getRobot()
+      if (!robot) return getRobotUnavailableResult()
+
       const x = Number(args.x)
       const y = Number(args.y)
       const button = args.button ?? 'left'
@@ -111,6 +147,9 @@ export function registerInputHandlers(): void {
 
   ipcMain.handle(DESKTOP_INPUT_TYPE, (_event, args: TypeArgs) => {
     try {
+      const robot = getRobot()
+      if (!robot) return getRobotUnavailableResult()
+
       if (typeof args.text === 'string') {
         robot.setKeyboardDelay(0)
         robot.typeString(args.text)
@@ -153,6 +192,9 @@ export function registerInputHandlers(): void {
 
   ipcMain.handle(DESKTOP_INPUT_SCROLL, (_event, args: ScrollArgs) => {
     try {
+      const robot = getRobot()
+      if (!robot) return getRobotUnavailableResult()
+
       const x = args.x == null ? null : Number(args.x)
       const y = args.y == null ? null : Number(args.y)
       const scrollX = Number(args.scrollX ?? 0)

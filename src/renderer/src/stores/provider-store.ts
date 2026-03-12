@@ -593,7 +593,9 @@ export const useProviderStore = create<ProviderStore>()(
           ...(provider.instructionsPrompt
             ? { instructionsPrompt: provider.instructionsPrompt }
             : {}),
-          ...(provider.preferResponsesWebSocket
+          ...(provider.preferResponsesWebSocket ||
+          activeModel?.preferResponsesWebSocket ||
+          (provider.builtinId === 'codex-oauth' && requestType === 'openai-responses')
             ? { preferResponsesWebSocket: true }
             : {})
         }
@@ -693,7 +695,9 @@ export const useProviderStore = create<ProviderStore>()(
           ...(provider.instructionsPrompt
             ? { instructionsPrompt: provider.instructionsPrompt }
             : {}),
-          ...(provider.preferResponsesWebSocket
+          ...(provider.preferResponsesWebSocket ||
+          model?.preferResponsesWebSocket ||
+          (provider.builtinId === 'codex-oauth' && requestType === 'openai-responses')
             ? { preferResponsesWebSocket: true }
             : {})
         }
@@ -757,7 +761,9 @@ export const useProviderStore = create<ProviderStore>()(
           ...(provider.instructionsPrompt
             ? { instructionsPrompt: provider.instructionsPrompt }
             : {}),
-          ...(provider.preferResponsesWebSocket
+          ...(provider.preferResponsesWebSocket ||
+          fastModel?.preferResponsesWebSocket ||
+          (provider.builtinId === 'codex-oauth' && requestType === 'openai-responses')
             ? { preferResponsesWebSocket: true }
             : {})
         }
@@ -831,6 +837,9 @@ function ensureBuiltinPresets(): void {
       }
       if (existing.userAgent !== preset.userAgent) {
         patch.userAgent = preset.userAgent
+      }
+      if (existing.preferResponsesWebSocket !== preset.preferResponsesWebSocket) {
+        patch.preferResponsesWebSocket = preset.preferResponsesWebSocket
       }
       if (existing.defaultModel !== preset.defaultModel) {
         patch.defaultModel = preset.defaultModel

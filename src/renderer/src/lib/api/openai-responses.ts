@@ -230,7 +230,10 @@ class OpenAIResponsesProvider implements APIProvider {
       }
     }
 
-    const transport = config.preferResponsesWebSocket ? 'websocket' : undefined
+    const transport =
+      config.preferResponsesWebSocket || config.providerBuiltinId === 'codex-oauth'
+        ? 'websocket'
+        : undefined
     for await (const sse of ipcStreamRequest({
       url,
       method: 'POST',

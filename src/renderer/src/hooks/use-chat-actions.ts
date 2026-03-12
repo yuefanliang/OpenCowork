@@ -930,6 +930,9 @@ export function useChatActions(): {
             baseProviderConfig.useSystemProxy = sessionProviderConfig.useSystemProxy
             baseProviderConfig.userAgent = sessionProviderConfig.userAgent
             baseProviderConfig.requestOverrides = sessionProviderConfig.requestOverrides
+            baseProviderConfig.providerBuiltinId = sessionProviderConfig.providerBuiltinId
+            baseProviderConfig.preferResponsesWebSocket =
+              sessionProviderConfig.preferResponsesWebSocket
             baseProviderConfig.responseSummary =
               sessionProviderConfig.responseSummary ??
               useProviderStore.getState().getActiveModelConfig()?.responseSummary
