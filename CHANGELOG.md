@@ -3,6 +3,16 @@
 All notable changes to **OpenCowork** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.5.8] - 2026-03-16
+
+### Added
+- Slash command functionality in chat input — invoke commands via `/` prefix with command suggestions and command snapshots in message handling.
+- New command files for agent workflows: commit message drafting (`commit.md`), code review (`review.md`), security review (`security-review.md`), and agent creation (`agents.md`).
+
+### Changed
+- Refactored AGENTS.md for clarity and structure with detailed sections on project structure, build commands, coding style, testing, and commit guidelines.
+- Updated package-lock.json with new dependencies (`docx`, `https-proxy-agent`) and removed unnecessary peer dependency flags.
+
 ## [0.5.7] - 2026-03-14
 
 ### Added
