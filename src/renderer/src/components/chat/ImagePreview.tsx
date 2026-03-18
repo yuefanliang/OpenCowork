@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react'
 import { X, Download, Copy, Check } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
+import { IPC } from '@renderer/lib/ipc/channels'
+import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 
 interface ImagePreviewProps {
   src: string
   alt?: string
+  filePath?: string
 }
 
 function getDownloadExtension(imageSrc: string): string {
@@ -45,9 +48,53 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([decodeURIComponent(data)], { type: mimeType })
 }
 
+function getFileName(filePath: string): string {
+  const parts = filePath.split(/[\\/]/)
+  return parts[parts.length - 1] || `image-${Date.now()}.png`
+}
+
+async function downloadPersistedImage(
+  filePath: string,
+  defaultName: string
+): Promise<{ canceled?: boolean }> {
+  const readResult = (await ipcClient.invoke(IPC.FS_READ_FILE_BINARY, {
+    path: filePath
+  })) as { data?: string; error?: string }
+
+  if (readResult.error || !readResult.data) {
+    throw new Error(readResult.error || 'Failed to read image file')
+  }
+
+  const saveResult = (await ipcClient.invoke(IPC.FS_SELECT_SAVE_FILE, {
+    defaultPath: defaultName,
+    filters: [
+      {
+        name: 'Images',
+        extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg']
+      }
+    ]
+  })) as { path?: string; canceled?: boolean }
+
+  if (saveResult.canceled || !saveResult.path) {
+    return { canceled: true }
+  }
+
+  const writeResult = (await ipcClient.invoke(IPC.FS_WRITE_FILE_BINARY, {
+    path: saveResult.path,
+    data: readResult.data
+  })) as { success?: boolean; error?: string }
+
+  if (writeResult.error) {
+    throw new Error(writeResult.error)
+  }
+
+  return { canceled: false }
+}
+
 export function ImagePreview({
   src,
-  alt = 'Generated image'
+  alt = 'Generated image',
+  filePath
 }: ImagePreviewProps): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -87,9 +134,14 @@ export function ImagePreview({
 
   const handleDownload = async (): Promise<void> => {
     try {
-      const defaultName = `image-${Date.now()}${getDownloadExtension(effectiveSrc)}`
+      const defaultName = filePath
+        ? getFileName(filePath)
+        : `image-${Date.now()}${getDownloadExtension(effectiveSrc)}`
 
-      if (effectiveSrc.startsWith('data:')) {
+      if (filePath) {
+        const result = await downloadPersistedImage(filePath, defaultName)
+        if (result.canceled) return
+      } else if (effectiveSrc.startsWith('data:')) {
         const blob = dataUrlToBlob(effectiveSrc)
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')

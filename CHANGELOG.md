@@ -3,6 +3,17 @@
 All notable changes to **OpenCowork** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.6.0] - 2026-03-18
+
+### Added
+- Gemini provider support for the `vertex-ai` model.
+- Data URL to Blob conversion in `ImagePreview` for more reliable image downloads.
+
+### Changed
+- Refactored Gemini provider API types and provider store to improve model management.
+- Updated `CommandPalette` model presets to reflect the latest provider options.
+- Refined `ImagePreview` download flow to reuse Blob conversion for data URL sources.
+
 ## [0.5.9] - 2026-03-17
 
 ### Added

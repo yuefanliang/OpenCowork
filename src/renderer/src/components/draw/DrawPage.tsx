@@ -108,7 +108,8 @@ function normalizeImageSrc(event: StreamEvent): DrawRunImage | null {
   return {
     id: nanoid(),
     src,
-    mediaType: imageBlock.source.mediaType
+    mediaType: imageBlock.source.mediaType,
+    filePath: imageBlock.source.filePath
   }
 }
 
@@ -1034,7 +1035,12 @@ export function DrawPage(): React.JSX.Element {
                     {run.images.length > 0 && (
                       <div className="mt-4 grid gap-3 lg:grid-cols-2">
                         {run.images.map((image) => (
-                          <ImagePreview key={image.id} src={image.src} alt={run.prompt} />
+                          <ImagePreview
+                            key={image.id}
+                            src={image.src}
+                            alt={run.prompt}
+                            filePath={image.filePath}
+                          />
                         ))}
                       </div>
                     )}

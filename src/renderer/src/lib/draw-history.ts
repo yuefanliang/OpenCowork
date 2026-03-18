@@ -5,6 +5,7 @@ export interface DrawRunImage {
   id: string
   src: string
   mediaType?: string
+  filePath?: string
 }
 
 export interface DrawRunError {

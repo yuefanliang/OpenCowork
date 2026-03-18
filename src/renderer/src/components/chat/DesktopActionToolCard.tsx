@@ -43,7 +43,9 @@ function parseErrorMessage(output: ToolResultContent | undefined): string | null
   return output.trim() || null
 }
 
-function parseStructuredOutput(output: ToolResultContent | undefined): Record<string, unknown> | null {
+function parseStructuredOutput(
+  output: ToolResultContent | undefined
+): Record<string, unknown> | null {
   if (typeof output !== 'string') return null
   const parsed = decodeStructuredToolResult(output)
   return parsed && !Array.isArray(parsed) ? parsed : null
@@ -227,6 +229,7 @@ export function DesktopActionToolCard({
                         key={`${src}-${index}`}
                         src={src}
                         alt={`Desktop screenshot ${index + 1}`}
+                        filePath={image.source.filePath}
                       />
                     )
                   })}

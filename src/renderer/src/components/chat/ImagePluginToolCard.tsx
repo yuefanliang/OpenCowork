@@ -204,7 +204,11 @@ export function ImagePluginToolCard({
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           transition={{ ...ITEM_TRANSITION, delay: index * 0.06 }}
                         >
-                          <ImagePreview src={src} alt={`Generated image ${index + 1}`} />
+                          <ImagePreview
+                            src={src}
+                            alt={`Generated image ${index + 1}`}
+                            filePath={image.source.filePath}
+                          />
                         </motion.div>
                       )
                     })}

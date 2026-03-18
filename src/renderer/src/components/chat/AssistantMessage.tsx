@@ -1060,7 +1060,11 @@ export function AssistantMessage({
                 if (!imgSrc) return null
                 return (
                   <ScaleIn key={item.index} className="w-full origin-left">
-                    <ImagePreview src={imgSrc} alt="Generated image" />
+                    <ImagePreview
+                      src={imgSrc}
+                      alt="Generated image"
+                      filePath={imgBlock.source.filePath}
+                    />
                   </ScaleIn>
                 )
               }
