@@ -85,6 +85,9 @@ export function normalizeProviderBaseUrl(
     // Anthropic provider will append `/v1/messages` itself.
     return trimmed.replace(/\/v1(?:\/messages)?$/i, '')
   }
+  if (requestType === 'gemini' || requestType === 'vertex-ai') {
+    return trimmed.replace(/\/openai$/i, '')
+  }
   return trimmed
 }
 
@@ -577,6 +580,7 @@ export const useProviderStore = create<ProviderStore>()(
           apiKey: provider.apiKey,
           baseUrl: normalizedBaseUrl,
           model: activeModelId,
+          category: activeModel?.category,
           providerId: provider.id,
           providerBuiltinId: provider.builtinId,
           computerUseEnabled: isModelComputerUseEnabled(activeModel, requestType),

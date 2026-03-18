@@ -228,6 +228,7 @@ export type ProviderType =
   | 'openai-responses'
   | 'openai-images'
   | 'gemini'
+  | 'vertex-ai'
 export type ResponseSummary = 'auto' | 'concise' | 'detailed'
 
 export type AuthMode = 'apiKey' | 'oauth' | 'channel'
@@ -389,6 +390,7 @@ export interface ProviderConfig {
   apiKey: string
   baseUrl?: string
   model: string
+  category?: ModelCategory
   /** Provider ID (used for quota tracking and UI bindings) */
   providerId?: string
   /** Built-in provider ID (for preset-based mapping) */

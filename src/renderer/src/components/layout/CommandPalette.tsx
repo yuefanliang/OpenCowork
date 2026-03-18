@@ -50,9 +50,11 @@ const MODEL_PRESETS: Record<ProviderType, string[]> = {
   gemini: [
     'gemini-2.5-pro',
     'gemini-2.5-flash',
+    'gemini-3.1-flash-lite-preview',
     'gemini-3.1-flash-image-preview',
     'gemini-3-pro-image-preview'
   ],
+  'vertex-ai': ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3.1-flash-lite-preview'],
   'openai-chat': ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini', 'o3-mini', 'o4-mini'],
   'openai-responses': [
     'gpt-4.1',
