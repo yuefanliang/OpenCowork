@@ -292,14 +292,16 @@ export function UserMessage({
                 if (!open) setPreviewImageSrc(null)
               }}
             >
-              <DialogContent className="w-auto max-w-[min(96vw,1100px)] p-2">
+              <DialogContent className="max-h-[90vh] !w-fit !max-w-[min(96vw,1100px)] overflow-hidden p-2 sm:!max-w-[min(96vw,1100px)]">
                 <DialogTitle className="sr-only">Image preview</DialogTitle>
                 {previewImageSrc && (
-                  <img
-                    src={previewImageSrc}
-                    alt="Image preview"
-                    className="max-h-[85vh] max-w-[92vw] rounded object-contain"
-                  />
+                  <div className="flex max-w-full items-center justify-center overflow-hidden">
+                    <img
+                      src={previewImageSrc}
+                      alt="Image preview"
+                      className="block h-auto max-h-[calc(90vh-1rem)] w-auto max-w-[min(92vw,1068px)] rounded object-contain"
+                    />
+                  </div>
                 )}
               </DialogContent>
             </Dialog>
