@@ -1,3 +1,5 @@
+import { spawnSync } from 'node:child_process'
+import { dirname } from 'node:path'
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { writeCrashLog } from './crash-logger'
@@ -14,6 +16,7 @@ let initialized = false
 const notifiedAvailableVersions = new Set<string>()
 let checkForUpdatesPromise: Promise<unknown> | null = null
 let downloadUpdatePromise: Promise<unknown> | null = null
+let macUpdaterUnsupportedReason: string | null | undefined
 
 function getValidWindow(getMainWindow: WindowGetter): BrowserWindow | undefined {
   const win = getMainWindow()
@@ -98,6 +101,57 @@ function formatReleaseNotesText(releaseNotes: string): string {
   return /<[^>]+>/.test(trimmed) ? htmlToMarkdown(trimmed) : trimmed
 }
 
+function getMacAppBundlePath(): string | null {
+  if (process.platform !== 'darwin') {
+    return null
+  }
+
+  const executablePath = app.getPath('exe')
+  const macOsPath = dirname(executablePath)
+  const contentsPath = dirname(macOsPath)
+  const appBundlePath = dirname(contentsPath)
+
+  return appBundlePath.endsWith('.app') ? appBundlePath : null
+}
+
+function getUpdaterUnsupportedReason(): string | null {
+  if (process.platform !== 'darwin' || !app.isPackaged) {
+    return null
+  }
+
+  if (macUpdaterUnsupportedReason !== undefined) {
+    return macUpdaterUnsupportedReason
+  }
+
+  const appBundlePath = getMacAppBundlePath()
+  if (!appBundlePath) {
+    macUpdaterUnsupportedReason =
+      'Automatic updates are unavailable on this macOS build because the app bundle path could not be determined. Download the latest DMG manually.'
+    return macUpdaterUnsupportedReason
+  }
+
+  const result = spawnSync('codesign', ['-dv', '--verbose=4', appBundlePath], {
+    encoding: 'utf8'
+  })
+  const output = [result.stdout, result.stderr].filter(Boolean).join('\n')
+
+  if (result.status !== 0) {
+    macUpdaterUnsupportedReason =
+      'Automatic updates are unavailable on this macOS build because its code signature could not be inspected. Download the latest DMG manually.'
+    return macUpdaterUnsupportedReason
+  }
+
+  const isAdHocSigned = /Signature=adhoc/i.test(output)
+  const hasTrustedAuthority = /Authority=Developer ID Application:/i.test(output)
+
+  macUpdaterUnsupportedReason =
+    isAdHocSigned || !hasTrustedAuthority
+      ? 'Automatic updates are disabled for this macOS build because it is ad-hoc signed or unsigned. ShipIt can only install updates for apps signed with a Developer ID Application certificate. Download the latest DMG manually.'
+      : null
+
+  return macUpdaterUnsupportedReason
+}
+
 function getReleaseNotesText(releaseNotes: unknown): string {
   if (!releaseNotes) return ''
   if (typeof releaseNotes === 'string') {
@@ -120,6 +174,13 @@ function getReleaseNotesText(releaseNotes: unknown): string {
 
 function formatErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
+
+  if (
+    /code signature/i.test(message) &&
+    /(did not pass validation|代码未能满足指定的代码要求)/i.test(message)
+  ) {
+    return 'Automatic update installation failed because this macOS build is not signed with a compatible Developer ID certificate. Download the latest DMG manually.'
+  }
 
   if (/latest-mac\.yml/.test(message) && /\b404\b/.test(message)) {
     return 'Current release is missing macOS update metadata (latest-mac.yml). Rebuild the release and upload the macOS zip/update metadata assets.'
@@ -288,6 +349,11 @@ export function setupAutoUpdater(options: AutoUpdateOptions): void {
   ipcMain.handle('update:check', async () => {
     try {
       console.log('[Updater] User requested update check')
+      const unsupportedReason = getUpdaterUnsupportedReason()
+      if (unsupportedReason) {
+        return { success: false, error: unsupportedReason }
+      }
+
       const result = (await checkForUpdatesSafely()) as { updateInfo?: { version?: string } } | null
       const currentVersion = normalizeVersion(app.getVersion())
 
@@ -315,6 +381,11 @@ export function setupAutoUpdater(options: AutoUpdateOptions): void {
   ipcMain.handle('update:download', async () => {
     try {
       console.log('[Updater] User requested download')
+      const unsupportedReason = getUpdaterUnsupportedReason()
+      if (unsupportedReason) {
+        return { success: false, error: unsupportedReason }
+      }
+
       await downloadUpdateSafely()
       return { success: true }
     } catch (error) {
@@ -334,6 +405,13 @@ export function setupAutoUpdater(options: AutoUpdateOptions): void {
     process.platform !== 'darwin'
   ) {
     console.log(`[Updater] Skip update check on unsupported platform: ${process.platform}`)
+    return
+  }
+
+  const unsupportedReason = getUpdaterUnsupportedReason()
+  if (unsupportedReason) {
+    console.warn(`[Updater] ${unsupportedReason}`)
+    writeCrashLog('updater_unsupported', { message: unsupportedReason })
     return
   }
 

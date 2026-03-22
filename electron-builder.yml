@@ -119,7 +119,7 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
 mac:
-  identity: '-'
+  icon: resources/icon-mac.png
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
@@ -127,7 +127,6 @@ mac:
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
-afterSign: build/after-sign-mac.cjs
 dmg:
   artifactName: ${name}-${version}.${ext}
 linux:
