@@ -121,6 +121,7 @@ nsis:
   allowToChangeInstallationDirectory: true
 mac:
   icon: resources/icon-mac.png
+  entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
