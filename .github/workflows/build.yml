@@ -392,6 +392,25 @@ jobs:
           name: open-cowork-build-output
           path: out
 
+      # CSC_LINK must be a .p12/.pfx file path, https URL, or base64 certificate data.
+      # If it is '.' or any directory (e.g. repo root), electron-builder fails with: "<path> not a file".
+      - name: Validate macOS code signing (CSC_LINK)
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK || '' }}
+        run: |
+          if [ -z "$CSC_LINK" ]; then
+            exit 0
+          fi
+          if [ "$CSC_LINK" = '.' ] || [ "$CSC_LINK" = './' ]; then
+            echo "::error::CSC_LINK cannot be '.' or './'. electron-builder expects a certificate file, URL, or base64 — not the repo root. Fix the repository secret or remove it for unsigned (ad-hoc) builds."
+            exit 1
+          fi
+          if [ -d "$CSC_LINK" ]; then
+            echo "::error::CSC_LINK points to a directory, not a certificate file. Do not set it to the workspace path. Use base64-encoded .p12, an https link to .p12, or a runner-local path after writing the file in a prior step."
+            exit 1
+          fi
+
       - name: Package ${{ matrix.platform }}-${{ matrix.artifact_arch }}
         run: npx electron-builder --mac dmg zip --${{ matrix.build_arch }} --publish never
         env:
