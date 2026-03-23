@@ -1354,6 +1354,10 @@ export function Layout({ updateInfo, onOpenUpdateDialog }: LayoutProps): React.J
       <CommandPalette />
       <SettingsDialog />
       <KeyboardShortcutsDialog />
+      <ConversationGuideDialog
+        open={conversationGuideOpen}
+        onOpenChange={setConversationGuideOpen}
+      />
       <PermissionDialog
         toolCall={pendingApproval}
         onAllow={() => pendingApproval && resolveApproval(pendingApproval.id, true)}

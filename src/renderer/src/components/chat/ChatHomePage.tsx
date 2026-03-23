@@ -9,7 +9,8 @@ import {
   Server,
   Pencil,
   ChevronDown,
-  Plus
+  Plus,
+  BookOpen
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@renderer/components/ui/button'
@@ -123,6 +124,7 @@ export function ChatHomePage(): React.JSX.Element {
   const activeModelId = useProviderStore((s) => s.activeModelId)
   const providers = useProviderStore((s) => s.providers)
   const mainModelSelectionMode = useSettingsStore((s) => s.mainModelSelectionMode)
+  const conversationGuideSeen = useSettingsStore((s) => s.conversationGuideSeen)
   const autoSelection = useUIStore((s) => s.getAutoModelSelection(activeSessionId))
   const [sshDirInputs, setSshDirInputs] = useState<Record<string, string>>({})
   const [sshDirEditingId, setSshDirEditingId] = useState<string | null>(null)
@@ -323,6 +325,15 @@ export function ChatHomePage(): React.JSX.Element {
     homeModelMetaParts.join(' · ') || (isAutoModeActive ? t('messageList.homeAutoMeta') : '')
 
   const normalizedWorkingFolder = workingFolder?.toLowerCase()
+
+  useEffect(() => {
+    if (conversationGuideSeen) return
+    if (sessions.length > 0) return
+    const timer = window.setTimeout(() => {
+      useUIStore.getState().setConversationGuideOpen(true)
+    }, 240)
+    return () => window.clearTimeout(timer)
+  }, [conversationGuideSeen, sessions.length])
 
   return (
     <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-background via-background to-muted/20">
@@ -658,6 +669,24 @@ export function ChatHomePage(): React.JSX.Element {
             hideWorkingFolderIndicator
             isStreaming={false}
           />
+        </div>
+
+        <div className="mx-auto mt-4 flex w-full max-w-3xl items-center justify-between gap-3 rounded-xl border bg-primary/5 px-5 py-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <BookOpen className="size-4 text-primary" />
+              <span>{t('guide.bannerTitle')}</span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{t('guide.bannerDesc')}</p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={() => useUIStore.getState().setConversationGuideOpen(true)}
+          >
+            {t('guide.openButton')}
+          </Button>
         </div>
 
         {/* Keyboard shortcuts hint */}
