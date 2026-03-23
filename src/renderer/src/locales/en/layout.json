@@ -103,6 +103,7 @@
     "openSession": "Open session",
     "stopCommand": "Stop",
     "working": "Working...",
+    "help": "Onboarding",
     "clickToRename": "Click to rename",
     "renameSession": "Rename session:",
     "modelLabel": "Model: {{model}}"

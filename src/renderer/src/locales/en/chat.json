@@ -66,6 +66,78 @@
     "recommendationDefaultCowork": "Based on the current context, suggest the next collaborative task worth executing.",
     "recommendationDefaultCode": "Based on the current context, suggest the next code change goal and implementation requirements."
   },
+  "guide": {
+    "title": "Conversation Onboarding",
+    "badge": "Chat Features",
+    "subtitle": "Learn the left project/session area, the composer with commands and @ file mentions, and the right-side panels.",
+    "openButton": "Open Guide",
+    "bannerTitle": "New to the conversation page?",
+    "bannerDesc": "Spend two minutes on this guide and you will know how projects, sessions, the composer, and the right panel work together.",
+    "openDocs": "Open Help Site",
+    "close": "Maybe later",
+    "startNow": "Start using it",
+    "sections": {
+      "leftSidebar": {
+        "title": "Left: Projects and Sessions",
+        "bullets": [
+          "The narrow far-left rail is app navigation; the wide left panel is where projects and sessions live.",
+          "A project works like a workspace and can store its name, working folder, SSH connection, and default model.",
+          "Each project can contain many sessions, and sessions support create, rename, pin, delete, and mode switching.",
+          "Session search matches both titles and loaded message content, while older sessions collapse into history.",
+          "Right-click a project or session to export, duplicate, clear messages, or change folders."
+        ]
+      },
+      "composer": {
+        "title": "Center Bottom: Composer and Send",
+        "bullets": [
+          "The composer supports multiline editing, per-session draft memory, and input history navigation.",
+          "Press Enter to send and Shift+Enter for a newline; extra sends during a run go into the queue.",
+          "The bottom toolbar controls model selection, web search, Skills, Plan Mode, and image upload.",
+          "When the current mode requires a working folder, the composer reminds you before sending.",
+          "The wand button rewrites your prompt into a clearer and more actionable task description."
+        ]
+      },
+      "mentions": {
+        "title": "Composer: @ File Mentions",
+        "bullets": [
+          "Type @ in the composer to search files inside the current working folder instead of typing full paths.",
+          "Use arrow keys to move, Tab or Enter to insert, and Esc to dismiss the picker.",
+          "Inserted files become structured file references, not plain text, so the assistant can use them reliably.",
+          "The selected-file bar lets you preview, locate references, remove one file, or clear them all."
+        ]
+      },
+      "commands": {
+        "title": "Composer: / Commands and the + Menu",
+        "bullets": [
+          "Type / at the start of input to open command suggestions backed by local command templates.",
+          "The + menu gives visual access to Commands, Skills, Channels, and MCP Servers.",
+          "Selecting a Skill adds its capability prefix to the next message, which is great for repeatable workflows.",
+          "Ctrl+K opens the global command palette for UI actions; it is different from chat slash commands."
+        ]
+      },
+      "rightPanel": {
+        "title": "Right: Execution and Resource Panels",
+        "bullets": [
+          "Steps is the fastest way to see what the assistant is doing right now and how far it has progressed.",
+          "Plan is for planning before implementation, especially for larger or multi-file work.",
+          "Files shows the local or SSH file tree, while Artifacts summarizes files created, edited, or deleted in this run.",
+          "Team shows multi-agent collaboration, and Context summarizes folder, model, tokens, context window, and background commands.",
+          "The right panel can be collapsed, switched by tabs, and resized by dragging.",
+          "Some files open an additional preview panel for HTML, Markdown, images, spreadsheets, PDF, and more."
+        ]
+      },
+      "quickStart": {
+        "title": "Recommended First Steps",
+        "bullets": [
+          "Create a project and bind a working folder before starting serious work.",
+          "Use Clarify for requirement discovery, Cowork for general assistance, and Code for implementation tasks.",
+          "For code work, mention files with @ first, then describe the goal and constraints.",
+          "During execution, keep an eye on Steps, Files, Artifacts, and Context on the right side.",
+          "When the session grows long, use Context compression to keep the model focused."
+        ]
+      }
+    }
+  },
   "askUser": {
     "title": "Your input is needed",
     "subtitle": "Answer these questions and I will continue.",

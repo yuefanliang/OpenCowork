@@ -103,6 +103,7 @@
     "openSession": "进入会话",
     "stopCommand": "停止",
     "working": "处理中...",
+    "help": "新人引导",
     "clickToRename": "点击重命名",
     "renameSession": "重命名会话：",
     "modelLabel": "模型：{{model}}"
