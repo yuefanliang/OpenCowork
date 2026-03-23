@@ -2,6 +2,7 @@ appId: com.opencowork.app
 productName: OpenCoWork
 directories:
   buildResources: build
+afterPack: build/after-sign-mac.cjs
 files:
   - '!**/.vscode/*'
   - '!src/*'
