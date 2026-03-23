@@ -3,6 +3,20 @@
 All notable changes to **OpenCowork** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.6.4] - 2026-03-24
+
+### Refactored
+
+- Cleaned up unused imports and props in the `MessageList` chat component: removed unused `Button` and `RefreshCw` imports, removed deprecated `onRetry` prop, and removed unused `hasAssistantMessages` variable.
+
+### Changed
+
+- Updated the Routin AI provider preset default responseSummary level from 'low' to 'detailed' for more comprehensive summary outputs.
+
+### Fixed
+
+- Added validation step in the macOS CI build to catch invalid CSC_LINK paths before packaging, preventing "<path> not a file" electron-builder failures.
+
 ## [0.6.3] - 2026-03-23
 
 ### Added
