@@ -655,6 +655,7 @@ export const useUIStore = create<UIStore>((set, get) => ({
       skillsPageOpen: false,
       resourcesPageOpen: false,
       translatePageOpen: false,
+      drawPageOpen: false,
       sshPageOpen: false,
       tasksPageOpen: false
     }),
@@ -665,6 +666,7 @@ export const useUIStore = create<UIStore>((set, get) => ({
       skillsPageOpen: false,
       resourcesPageOpen: false,
       translatePageOpen: false,
+      drawPageOpen: false,
       sshPageOpen: false,
       tasksPageOpen: false
     }),
